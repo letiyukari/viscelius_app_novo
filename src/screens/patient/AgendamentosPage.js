@@ -1,261 +1,205 @@
-// src/App.js
-import React, { useState, useEffect, useRef } from 'react';
-// IMPORTAÇÕES DO FIREBASE
-import { auth, db } from './firebase'; // Importe 'auth' e 'db' do seu arquivo firebase.js
-import {
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  onAuthStateChanged,
-  signOut
-} from 'firebase/auth';
-import { collection, addDoc, onSnapshot, query, where, doc, deleteDoc } from 'firebase/firestore'; // Importe funções do Firestore
+import React, { useState, useEffect } from 'react';
+import { db } from '../../firebase';
+import { collection, addDoc, onSnapshot, query, where, doc, deleteDoc } from 'firebase/firestore';
+import { ClockIcon, VideoIcon } from '../../common/Icons';
 
-// --- Ícones ---
-import {
-    AppIcon, HomeIcon, CalendarIcon, MusicIcon, HistoryIcon, UserIcon, LogoutIcon, BellIcon,
-    PlayIcon, PauseIcon, WindIcon, ClockIcon, VideoIcon, AwardIcon, CheckCircleIcon,
-    UserCheckIcon, PlusIcon, XIcon
-} from './common/Icons';
-
-// --- PÁGINAS E COMPONENTES ---
-import LoginPage from './screens/auth/LoginPage';
-import Navbar from './components/layout/Navbar';
-import HomePage from './screens/patient/HomePage';
-import AgendamentosPage from './screens/patient/AgendamentosPage'; // ADICIONADO: Importação da AgendamentosPage
-
-
-// --- MODAL PARA GERENCIAR MÚSICAS DA PLAYLIST ---
-const PlaylistDetailModal = ({ playlist, onClose }) => {
-    const [songs, setSongs] = useState([]);
-    const [newSongName, setNewSongName] = useState('');
-    const [newSongArtist, setNewSongArtist] = useState('');
-    const [newSongUrl, setNewSongUrl] = useState('');
+const AgendamentosPage = ({ user }) => {
+    const therapists = [
+      { id: "carlos-mendes", name: "Dr. Carlos Mendes", specialty: "Foco e Ansiedade", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=1374&auto=format&fit=crop" },
+      { id: "sofia-ribeiro", name: "Dra. Sofia Ribeiro", specialty: "Expressão Emocional", avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=2070&auto=format&fit=crop" },
+      { id: "ricardo-alves", name: "Dr. Ricardo Alves", specialty: "Reabilitação Motora", avatar: "https://images.unsplash.com/photo-1568602471122-7832951cc4c5?q=80&w=2070&auto=format&fit=crop" },
+    ];
+  
+    const availableSchedule = {
+        "Seg, 22 Jul": ["14:00", "15:00"],
+        "Ter, 23 Jul": ["11:00", "13:00", "16:00"],
+        "Qua, 24 Jul": ["10:00", "11:00"],
+        "Qui, 25 Jul": [],
+        "Sex, 26 Jul": ["08:00", "15:00", "16:00", "17:00"],
+    };
+  
+    const [selectedTherapist, setSelectedTherapist] = useState(therapists[0]);
+    const [selectedDate, setSelectedDate] = useState(Object.keys(availableSchedule)[0]);
+    const [selectedSlot, setSelectedSlot] = useState(null);
+    const [userAppointments, setUserAppointments] = useState([]);
     const [message, setMessage] = useState({ type: '', text: '' });
   
+    const workHours = Array.from({ length: 11 }, (_, i) => `${String(i + 8).padStart(2, '0')}:00`);
+  
+    const handleConfirmBooking = async () => {
+      setMessage({ type: '', text: '' });
+      if (!user) {
+          setMessage({ type: 'error', text: 'Você precisa estar logado para agendar uma consulta.' });
+          return;
+      }
+      if (!selectedTherapist || !selectedDate || !selectedSlot) {
+          setMessage({ type: 'error', text: 'Por favor, selecione um terapeuta, data e horário.' });
+          return;
+      }
+  
+      try {
+          await addDoc(collection(db, 'appointments'), {
+              userId: user.uid,
+              userEmail: user.email,
+              therapistId: selectedTherapist.id,
+              therapistName: selectedTherapist.name,
+              date: selectedDate,
+              time: selectedSlot,
+              status: 'Agendada',
+              createdAt: new Date(),
+          });
+          setMessage({ type: 'success', text: 'Consulta agendada com sucesso!' });
+          setSelectedSlot(null);
+      } catch (e) {
+          setMessage({ type: 'error', text: 'Erro ao agendar consulta. Tente novamente.' });
+          console.error("Erro ao agendar consulta: ", e);
+      }
+    };
+  
+    const handleDeleteAppointment = async (appointmentId) => {
+      setMessage({ type: '', text: '' });
+      if (!user) {
+          setMessage({ type: 'error', text: 'Você precisa estar logado para cancelar uma consulta.' });
+          return;
+      }
+      try {
+          await deleteDoc(doc(db, 'appointments', appointmentId));
+          setMessage({ type: 'success', text: 'Agendamento cancelado com sucesso!' });
+      } catch (e) {
+          setMessage({ type: 'error', text: 'Erro ao cancelar agendamento. Tente novamente.' });
+          console.error("Erro ao cancelar agendamento: ", e);
+      }
+    };
+  
     useEffect(() => {
-        if (!playlist?.id) return;
+      if (!user) {
+          setUserAppointments([]);
+          return;
+      }
   
-        const songsCollectionRef = collection(db, 'playlists', playlist.id, 'songs');
-        const q = query(songsCollectionRef);
+      const q = query(
+          collection(db, 'appointments'),
+          where('userId', '==', user.uid)
+      );
   
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
-            const fetchedSongs = [];
-            querySnapshot.forEach((doc) => {
-                fetchedSongs.push({ id: doc.id, ...doc.data() });
-            });
-            setSongs(fetchedSongs);
-        }, (error) => {
-            console.error("Erro ao carregar músicas:", error);
-            setMessage({ type: 'error', text: 'Erro ao carregar músicas.' });
-        });
-  
-        return () => unsubscribe();
-    }, [playlist]);
-  
-    const handleAddSong = async () => {
-        setMessage({ type: '', text: '' });
-        if (!newSongName.trim() || !newSongArtist.trim() || !newSongUrl.trim()) {
-            setMessage({ type: 'error', text: 'Por favor, preencha todos os campos da música.' });
-            return;
-        }
-  
-        try {
-            await addDoc(collection(db, 'playlists', playlist.id, 'songs'), {
-                name: newSongName,
-                artist: newSongArtist,
-                url: newSongUrl,
-                createdAt: new Date(),
-            });
-            setMessage({ type: 'success', text: 'Música adicionada com sucesso!' });
-            setNewSongName('');
-            setNewSongArtist('');
-            setNewSongUrl('');
-        } catch (e) {
-            setMessage({ type: 'error', text: 'Erro ao adicionar música. Tente novamente.' });
-            console.error("Erro ao adicionar música: ", e);
-        }
-    };
-  
-    const handleDeleteSong = async (songId) => {
-        setMessage({ type: '', text: '' });
-        try {
-            await deleteDoc(doc(db, 'playlists', playlist.id, 'songs', songId));
-            setMessage({ type: 'success', text: 'Música removida.' });
-        } catch (e) {
-            setMessage({ type: 'error', text: 'Erro ao remover música.' });
-            console.error("Erro ao remover música: ", e);
-        }
-    };
+      const unsubscribe = onSnapshot(q, (querySnapshot) => {
+          const fetchedAppointments = [];
+          querySnapshot.forEach((doc) => {
+              fetchedAppointments.push({ id: doc.id, ...doc.data() });
+          });
+          setUserAppointments(fetchedAppointments);
+      }, (error) => {
+          console.error("Erro ao carregar agendamentos:", error);
+      });
+      return () => unsubscribe();
+    }, [user]);
   
     const styles = {
-        overlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
-        modal: { backgroundColor: '#1E1E1E', padding: '2rem', borderRadius: '12px', width: '90%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', position: 'relative', color: '#fff' },
-        closeButton: { position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', color: '#fff', fontSize: '1.5rem', cursor: 'pointer' },
-        title: { fontSize: '2rem', fontWeight: 'bold', marginBottom: '1.5rem', color: '#fff' },
-        formGroup: { marginBottom: '1rem' },
-        input: { width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #333', backgroundColor: '#333', color: '#fff', fontSize: '1rem' },
-        button: { backgroundColor: '#8B5CF6', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '12px', cursor: 'pointer', fontWeight: '600', fontSize: '1rem', transition: 'background-color 0.2s' },
-        message: { padding: '10px', borderRadius: '5px', marginTop: '10px', fontSize: '0.9rem' },
-        successMessage: { backgroundColor: '#d4edda', color: '#155724' },
-        errorMessage: { backgroundColor: '#f8d7da', color: '#721c24' },
-        songList: { marginTop: '2rem' },
-        songItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#282828', padding: '0.8rem', borderRadius: '8px', marginBottom: '0.5rem' },
-        songDetails: {},
-        songName: { margin: 0, fontWeight: 600 },
-        songArtist: { margin: '4px 0 0 0', fontSize: '0.9rem', color: '#b3b3b3' },
-        deleteButton: { background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', fontSize: '1.2rem' },
+        pageContainer: { padding: '2rem 3.5rem', backgroundColor: '#F9FAFB', fontFamily: '"Inter", sans-serif', overflowY: 'auto', height: '100vh' },
+        header: { marginBottom: '2rem' },
+        title: { color: '#1F2937', fontSize: '2.2rem', fontWeight: '700', margin: '0' },
+        subtitle: { color: '#6B7280', fontSize: '1.1rem', fontWeight: '500', marginTop: '0.5rem' },
+        mainContent: { display: 'grid', gridTemplateColumns: '350px 1fr', gap: '2.5rem', alignItems: 'flex-start' },
+        therapistList: { display: 'flex', flexDirection: 'column', gap: '1rem' },
+        therapistCard: { display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem', borderRadius: '12px', cursor: 'pointer', border: '2px solid #fff', transition: 'border-color 0.2s, background-color 0.2s' },
+        therapistCardSelected: { borderColor: '#8B5CF6', backgroundColor: '#F5F3FF' },
+        therapistAvatar: { width: '50px', height: '50px', borderRadius: '50%', objectFit: 'cover' },
+        therapistInfo: {},
+        therapistName: { margin: 0, color: '#1F2937', fontWeight: 600 },
+        therapistSpecialty: { margin: 0, color: '#6B7280', fontSize: '0.9rem' },
+        scheduleContainer: { backgroundColor: '#fff', border: '1px solid #E5E7EB', borderRadius: '16px', overflow: 'hidden' },
+        dateNavigator: { display: 'flex', borderBottom: '1px solid #E5E7EB' },
+        dateButton: { flex: 1, padding: '1rem', border: 'none', background: 'none', cursor: 'pointer', color: '#6B7280', fontWeight: 500, transition: 'background-color 0.2s, color 0.2s' },
+        dateButtonSelected: { backgroundColor: '#F5F3FF', color: '#6D28D9', boxShadow: 'inset 0 -2px 0 #6D28D9' },
+        slotsAndCalendarContainer: { padding: '1.5rem' },
+        slotsGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '1rem' },
+        slotButton: { padding: '0.75rem', border: '1px solid #D1D5DB', borderRadius: '8px', background: 'none', cursor: 'pointer', color: '#374151', fontWeight: 600, transition: 'background-color 0.2s, color 0.2s' },
+        slotButtonSelected: { backgroundColor: '#6D28D9', color: '#fff', borderColor: '#6D28D9' },
+        sessionInfo: { display: 'flex', gap: '1rem', color: '#6B7280', marginTop: '1.5rem', alignItems: 'center', paddingBottom: '1.5rem', borderBottom: '1px solid #E5E7EB' },
+        infoItem: { display: 'flex', alignItems: 'center', gap: '0.5rem' },
+        bookingAction: { marginTop: '2rem', textAlign: 'right' },
+        bookingButton: { backgroundColor: '#8B5CF6', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '12px', cursor: 'pointer', fontWeight: '600', fontSize: '1rem', transition: 'background-color 0.2s' },
+        userAppointmentsList: { marginTop: '3rem' },
+        userAppointmentCard: { backgroundColor: '#fff', padding: '1rem', borderRadius: '12px', border: '1px solid #E5E7EB', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+        cancelButton: { backgroundColor: '#EF4444', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' },
     };
+
+    const currentBookedSlots = userAppointments.filter(app => app.therapistId === selectedTherapist.id && app.date === selectedDate);
+    const availableSlotsForDisplay = availableSchedule[selectedDate] ? availableSchedule[selectedDate].filter(
+        slot => !currentBookedSlots.some(booked => booked.time === slot)
+    ) : [];
   
     return (
-        <div style={styles.overlay}>
-            <div style={styles.modal}>
-                <button onClick={onClose} style={styles.closeButton}><XIcon /></button>
-                <h2 style={styles.title}>Gerenciar Músicas de "{playlist.name}"</h2>
-                <div style={{ marginBottom: '2rem' }}>
-                    <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '1rem' }}>Adicionar Nova Música</h3>
-                    <div style={styles.formGroup}><input type="text" placeholder="Nome da Música" value={newSongName} onChange={(e) => setNewSongName(e.target.value)} style={styles.input} /></div>
-                    <div style={styles.formGroup}><input type="text" placeholder="Artista" value={newSongArtist} onChange={(e) => setNewSongArtist(e.target.value)} style={styles.input} /></div>
-                    <div style={styles.formGroup}><input type="text" placeholder="URL do Áudio (Ex: /audio/minha-musica.mp3)" value={newSongUrl} onChange={(e) => setNewSongUrl(e.target.value)} style={styles.input} /></div>
-                    <button onClick={handleAddSong} style={styles.button}>Adicionar Música</button>
-                    {message.text && (<div style={{ ...styles.message, ...(message.type === 'success' ? styles.successMessage : styles.errorMessage) }}>{message.text}</div>)}
-                </div>
-                <div style={styles.songList}>
-                    <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '1rem' }}>Músicas na Playlist</h3>
-                    {songs.length > 0 ? (songs.map(song => (
-                        <div key={song.id} style={styles.songItem}>
-                            <div style={styles.songDetails}>
-                                <p style={styles.songName}>{song.name}</p>
-                                <p style={styles.songArtist}>{song.artist}</p>
+      <div style={styles.pageContainer}>
+        <header style={styles.header}>
+          <h1 style={styles.title}>Agendar Sessão</h1>
+          <p style={styles.subtitle}>Encontre o melhor horário para sua próxima consulta.</p>
+        </header>
+        <div style={styles.mainContent}>
+            <div>
+                <h2 style={{ fontSize: '1.2rem', fontWeight: 600, color: '#1F2937', marginBottom: '1rem' }}>Nossos Terapeutas</h2>
+                <div style={styles.therapistList}>
+                    {therapists.map(therapist => (
+                        <div key={therapist.id} style={{ ...styles.therapistCard, ...(selectedTherapist.id === therapist.id && styles.therapistCardSelected) }} onClick={() => { setSelectedTherapist(therapist); setSelectedSlot(null); }}>
+                            <img src={therapist.avatar} alt={therapist.name} style={styles.therapistAvatar} />
+                            <div style={styles.therapistInfo}>
+                                <p style={styles.therapistName}>{therapist.name}</p>
+                                <p style={styles.therapistSpecialty}>{therapist.specialty}</p>
                             </div>
-                            <button onClick={() => handleDeleteSong(song.id)} style={styles.deleteButton}><XIcon /></button>
                         </div>
-                    ))) : (<p style={{ color: '#b3b3b3' }}>Nenhuma música nesta playlist ainda.</p>)}
+                    ))}
+                </div>
+            </div>
+            <div style={styles.scheduleContainer}>
+                <div style={styles.dateNavigator}>
+                {Object.keys(availableSchedule).map(day => (
+                    <button key={day} style={{ ...styles.dateButton, ...(selectedDate === day && styles.dateButtonSelected) }} onClick={() => { setSelectedDate(day); setSelectedSlot(null); }}>
+                    {day}
+                    </button>
+                ))}
+                </div>
+                <div style={styles.slotsAndCalendarContainer}>
+                    <div>
+                        <p style={{ fontWeight: 600, color: '#374151' }}>Horários disponíveis para {selectedDate}:</p>
+                        <div style={styles.slotsGrid}>
+                        {availableSlotsForDisplay.length > 0 ? availableSlotsForDisplay.map(time => (
+                            <button key={time} style={{...styles.slotButton, ...(selectedSlot === time && styles.slotButtonSelected)}} onClick={() => setSelectedSlot(time)}>
+                            {time}
+                            </button>
+                        )) : <p style={{color: '#6B7280'}}>Nenhum horário disponível para este dia.</p>}
+                        </div>
+                    </div>
+                    <div style={styles.sessionInfo}>
+                        <div style={styles.infoItem}><ClockIcon/> <span>Duração: 50 min</span></div>
+                        <div style={styles.infoItem}><VideoIcon/> <span>Modalidade: Online</span></div>
+                    </div>
+                    {selectedSlot && (
+                      <div style={styles.bookingAction}>
+                          <button onClick={handleConfirmBooking} style={styles.bookingButton}>Confirmar Agendamento</button>
+                      </div>
+                    )}
                 </div>
             </div>
         </div>
+        <div style={styles.userAppointmentsList}>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: '600', color: '#1F2937', marginBottom: '1.5rem' }}>Meus Agendamentos Confirmados</h2>
+          {userAppointments.length > 0 ? (
+              userAppointments.map(appointment => (
+                  <div key={appointment.id} style={styles.userAppointmentCard}>
+                      <div>
+                          <p style={{ margin: 0, fontWeight: 600 }}>{appointment.therapistName}</p>
+                          <p style={{ margin: '4px 0 0 0', fontSize: '0.9rem', color: '#6B7280' }}>{appointment.date} às {appointment.time}</p>
+                          <p style={{ margin: '4px 0 0 0', fontSize: '0.9rem', color: '#2E7D32', fontWeight: 500 }}>Status: {appointment.status}</p>
+                      </div>
+                      <button onClick={() => handleDeleteAppointment(appointment.id)} style={styles.cancelButton}>Cancelar</button>
+                  </div>
+              ))
+          ) : (
+              <p style={{ color: '#6B7280' }}>Você não tem agendamentos futuros.</p>
+          )}
+        </div>
+      </div>
     );
 };
-
-
-// --- PÁGINA DE PLAYLISTS ---
-const PlaylistsPage = () => {
-    const audioRef = useRef(null);
-    const [nowPlaying, setNowPlaying] = useState(null);
-    const [isPlaying, setIsPlaying] = useState(false);
-    const [firestorePlaylists, setFirestorePlaylists] = useState([]);
-    const [newPlaylistName, setNewPlaylistName] = useState('');
-    const [newPlaylistDesc, setNewPlaylistDesc] = useState('');
-    const [message, setMessage] = useState({ type: '', text: '' });
-    const [showPlaylistDetailModal, setShowPlaylistDetailModal] = useState(false);
-    const [selectedPlaylistForDetail, setSelectedPlaylistForDetail] = useState(null);
-    const yourPlaylistsStatic = [ { id: 'static-1', name: "Calma Interior", desc: "Músicas para acalmar a mente.", image: "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?q=80&w=2120&auto=format&fit=crop", url: "/audio/relaxamento-profundo.mp3" }, { id: 'static-2', name: "Manhã Positiva", desc: "Comece seu dia com energia.", image: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?q=80&w=2070&auto=format&fit=crop", url: "/audio/relaxamento-profundo.mp3" }, { id: 'static-3', name: "Sons de Chuva", desc: "Relaxe com o som da chuva.", image: "https://images.unsplash.com/photo-1534274988757-a28bf1a57c17?q=80&w=1935&auto=format&fit=crop", url: "/audio/relaxamento-profundo.mp3" }, ];
-    const natureSounds = [ { id: 'static-4', name: "Ondas do Mar", desc: "Sinta a brisa do oceano.", image: "https://images.unsplash.com/photo-1507525428034-b723a9ce6890?q=80&w=2070&auto=format&fit=crop", url: "/audio/relaxamento-profundo.mp3" }, { id: 'static-5', name: "Floresta Amazônica", desc: "Conecte-se com a natureza.", image: "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?q=80&w=2071&auto=format&fit=crop", url: "/audio/relaxamento-profundo.mp3" }, { id: 'static-6', name: "Pássaros da Manhã", desc: "Desperte com sons suaves.", image: "https://images.unsplash.com/photo-1473448912268-2022ce9509d8?q=80&w=1925&auto=format&fit=crop", url: "/audio/relaxamento-profundo.mp3" }, ];
-    const focusFrequencies = [ { id: 'static-7', name: "Foco Profundo", desc: "Ondas Alpha para concentração.", image: "https://images.unsplash.com/photo-1519681393784-d120267933ba?q=80&w=2070&auto=format&fit=crop", url: "/audio/relaxamento-profundo.mp3" }, { id: 'static-8', name: "Criatividade Ativa", desc: "Frequências para inspirar.", image: "https://images.unsplash.com/photo-1484589065579-248aad0d8b13?q=80&w=1959&auto=format&fit=crop", url: "/audio/relaxamento-profundo.mp3" }, { id: 'static-9', name: "Memória e Estudo", desc: "Melhore sua capacidade de aprender.", image: "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?q=80&w=1973&auto=format&fit=crop", url: "/audio/relaxamento-profundo.mp3" }, ];
-    const guidedJourneys = [ { id: 'static-10', name: "Jornada da Gratidão", desc: "10 min de meditação guiada.", image: "https://images.unsplash.com/photo-1506126613408-eca07ce68773?q=80&w=1999&auto=format&fit=crop", url: "/audio/relaxamento-profundo.mp3" }, { id: 'static-11', name: "Encontrando a Paz", desc: "15 min para aliviar a ansiedade.", image: "https://images.unsplash.com/photo-1597282826928-85e59239d543?q=80&w=1974&auto=format&fit=crop", url: "/audio/relaxamento-profundo.mp3" }, ];
   
-    const handleAddPlaylist = async () => { /* ... */ };
-    useEffect(() => { /* ... */ }, []);
-    const handlePlayPause = (track) => { /* ... */ };
-    useEffect(() => { /* ... */ }, [nowPlaying]);
-    const openPlaylistDetail = (playlist) => { /* ... */ };
-    const closePlaylistDetail = () => { /* ... */ };
-  
-    const PlaylistCard = ({ item, onPlay, isPlayingNow, isDynamic = false, onManage }) => { /* ... */ };
-    const PlaylistSection = ({ title, data, onPlay, nowPlaying, isPlaying, isDynamic = false, onManage }) => { /* ... */ };
-    const PlayerBar = ({ track, onPlayPause, isPlaying }) => { /* ... */ };
-  
-    const styles = {
-        pageContainer: { padding: '0 2rem', backgroundColor: '#121212', color: '#fff', fontFamily: '"Inter", sans-serif', overflowY: 'auto', height: '100vh', paddingBottom: '100px' },
-        heroSection: { display: 'flex', alignItems: 'flex-end', gap: '1.5rem', padding: '4rem 2rem 2rem 2rem', marginBottom: '2rem', borderRadius: '12px', background: `linear-gradient(to top, #121212 10%, transparent 100%), url(https://images.unsplash.com/photo-1510915361894-db8b60106f34?q=80&w=2070&auto=format&fit=crop)`, backgroundSize: 'cover', backgroundPosition: 'center', height: '340px' },
-        heroInfo: {},
-        heroTitle: { fontSize: '4rem', fontWeight: '800', margin: '0 0 0.5rem 0', textShadow: '0 2px 10px rgba(0,0,0,0.5)' },
-        heroDesc: { fontSize: '1rem', color: '#e0e0e0', margin: 0 },
-        formContainer: { backgroundColor: '#282828', padding: '2rem', borderRadius: '12px', marginBottom: '2rem' },
-        formGroup: { marginBottom: '1rem' },
-        input: { width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #333', backgroundColor: '#333', color: '#fff', fontSize: '1rem' },
-        button: { backgroundColor: '#8B5CF6', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '12px', cursor: 'pointer', fontWeight: '600', fontSize: '1rem', transition: 'background-color 0.2s' },
-        message: { padding: '10px', borderRadius: '5px', marginTop: '10px', fontSize: '0.9rem' },
-        successMessage: { backgroundColor: '#d4edda', color: '#155724' },
-        errorMessage: { backgroundColor: '#f8d7da', color: '#721c24' },
-    };
-  
-    return ( <div style={styles.pageContainer}> {/* ... JSX completo da PlaylistsPage aqui ... */} </div> );
-};
-
-
-// --- PÁGINA DE HISTÓRICO ---
-const HistoricoPage = () => {
-    const summaryData = { totalSessions: 12, timeInApp: "3 meses", mainTherapist: "Dr. Carlos Mendes", };
-    const pastSessions = [ { id: 1, date: "18 de Julho, 2025", therapistName: "Dr. Carlos Mendes", therapistAvatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=1374&auto=format&fit=crop", status: "Realizada", notes: "Paciente demonstrou grande avanço na expressão emocional. A playlist 'Calma Interior' foi particularmente eficaz. Recomenda-se focar em exercícios de ritmo na próxima sessão." }, { id: 2, date: "11 de Julho, 2025", therapistName: "Dr. Carlos Mendes", therapistAvatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=1374&auto=format&fit=crop", status: "Realizada", notes: "Sessão focada em técnicas de respiração sincronizada com sons de baixa frequência. Paciente reportou uma diminuição significativa nos níveis de ansiedade após a sessão." }, { id: 3, date: "02 de Julho, 2025", therapistName: "Dra. Sofia Ribeiro", therapistAvatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=2070&auto=format&fit=crop", status: "Realizada", notes: "Introdução a instrumentos de percussão para canalizar energia. Paciente mostrou-se receptivo e engajado. Próximo passo é a composição de pequenas melodias." }, { id: 4, date: "25 de Junho, 2025", therapistName: "Dr. Carlos Mendes", therapistAvatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=1374&auto=format&fit=crop", status: "Realizada", notes: "Primeira sessão de avaliação. Histórico e objetivos foram discutidos. Paciente busca gerenciar o estresse do dia-a-dia." }, ];
-    const [expandedSessionId, setExpandedSessionId] = useState(null);
-    const toggleNotes = (sessionId) => { setExpandedSessionId(expandedSessionId === sessionId ? null : sessionId); };
-    const styles = { /* ... estilos ... */ };
-    return ( <div> {/* ... JSX completo da HistoricoPage aqui ... */} </div> );
-};
-
-
-// --- PÁGINA DE PERFIL ---
-const ProfilePage = ({ onLogout }) => {
-    const [userData, setUserData] = useState({ name: "Ana Oliveira", email: "ana.oliveira@email.com", phone: "+55 11 98765-4321", memberSince: "Março, 2025", avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=2070&auto=format&fit=crop", plan: "Plano Premium Mensal", });
-    const [activeView, setActiveView] = useState('main');
-    const MainProfileView = () => ( <div> {/* ... */} </div> );
-    const EditInfoView = () => ( <div> {/* ... */} </div> );
-    const ChangePasswordView = () => ( <div> {/* ... */} </div> );
-    const ManageSubscriptionView = () => { /* ... */ return ( <div> {/* ... */} </div> ); };
-    const renderActiveView = () => { /* ... */ };
-    const styles = { /* ... estilos ... */ };
-    return ( <div> {/* ... JSX completo da ProfilePage aqui ... */} </div> );
-};
-
-
-// --- COMPONENTE PRINCIPAL APP ---
-function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [currentPage, setCurrentPage] = useState('home');
-  const [user, setUser] = useState(null);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (currentUser) {
-        setIsLoggedIn(true);
-        setUser(currentUser);
-      } else {
-        setIsLoggedIn(false);
-        setUser(null);
-        setCurrentPage('home');
-      }
-    });
-    return () => unsubscribe();
-  }, []);
-
-  const handleLogout = () => {
-      setIsLoggedIn(false);
-      setCurrentPage('home');
-  }
-
-  const renderPage = () => {
-    switch (currentPage) {
-      case 'home': return <HomePage setActivePage={setCurrentPage} />;
-      case 'agendamentos': return <AgendamentosPage user={user} />;
-      case 'playlists': return <PlaylistsPage user={user} />;
-      case 'historico': return <HistoricoPage />;
-      case 'perfil': return <ProfilePage onLogout={handleLogout} />;
-      default: return <HomePage setActivePage={setCurrentPage} />;
-    }
-  };
-
-  if (!isLoggedIn) {
-    return <LoginPage onLoginSuccess={() => {}} />;
-  }
-
-  return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
-      <Navbar activePage={currentPage} setActivePage={setCurrentPage} onLogout={handleLogout} />
-      <main style={{ flexGrow: 1, backgroundColor: '#F9FAFB', overflowY: 'auto' }}>
-        {renderPage()}
-      </main>
-    </div>
-  );
-}
-
-export default App;
+export default AgendamentosPage;

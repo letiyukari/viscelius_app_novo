@@ -1,66 +1,96 @@
 // src/App.js
 import React, { useState, useEffect } from 'react';
-// IMPORTAÇÕES DO FIREBASE
-import { auth } from './firebase';
+import { auth, db } from './firebase'; // CAMINHO CORRIGIDO
 import { onAuthStateChanged } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
 
 // --- PÁGINAS E COMPONENTES ---
-// Agora todas as nossas páginas e componentes principais são importados de seus próprios arquivos
-import LoginPage from './screens/auth/LoginPage';
-import Navbar from './components/layout/Navbar';
-import HomePage from './screens/patient/HomePage';
-import AgendamentosPage from './screens/patient/AgendamentosPage';
-import PlaylistsPage from './screens/patient/PlaylistsPage';
-import HistoricoPage from './screens/patient/HistoricoPage';
-import ProfilePage from './screens/patient/ProfilePage';
+import RoleSelectionScreen from './screens/RoleSelectionScreen'; // CAMINHO CORRIGIDO
+import LoginPage from './screens/auth/LoginPage'; // CAMINHO CORRIGIDO
+import Navbar from './components/layout/Navbar'; // CAMINHO CORRIGIDO
+import HomePage from './screens/patient/HomePage'; // CAMINHO CORRIGIDO
+import AgendamentosPage from './screens/patient/AgendamentosPage'; // CAMINHO CORRIGIDO
+import PlaylistsPage from './screens/patient/PlaylistsPage'; // CAMINHO CORRIGIDO
+import HistoricoPage from './screens/patient/HistoricoPage'; // CAMINHO CORRIGIDO
+import ProfilePage from './screens/patient/ProfilePage'; // CAMINHO CORRIGIDO
+import TherapistDashboardPage from './screens/therapist/DashboardPage'; // CAMINHO CORRIGIDO
 
-
-// --- COMPONENTE PRINCIPAL APP ---
-// Agora ele só controla qual página mostrar e se o usuário está logado.
 function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [currentPage, setCurrentPage] = useState('home');
   const [user, setUser] = useState(null);
+  const [userRole, setUserRole] = useState(null);
+  const [selectedRole, setSelectedRole] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState('');
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
-        setIsLoggedIn(true);
         setUser(currentUser);
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        if (userDocSnap.exists()) {
+          const userData = userDocSnap.data();
+          const role = userData.role || 'patient';
+          setUserRole(role);
+          setCurrentPage(role === 'therapist' ? 'dashboard' : 'home');
+        } else {
+          setUserRole('patient');
+          setCurrentPage('home');
+        }
       } else {
-        setIsLoggedIn(false);
         setUser(null);
-        setCurrentPage('home');
+        setUserRole(null);
       }
+      setIsLoading(false);
     });
     return () => unsubscribe();
   }, []);
 
-  const handleLogout = () => {
-      setIsLoggedIn(false);
-      setCurrentPage('home');
-  }
+  const handleSelectRole = (role) => {
+    setSelectedRole(role);
+  };
 
-  const renderPage = () => {
+  const handleLogout = () => {
+    auth.signOut();
+    setSelectedRole(null);
+    setCurrentPage('');
+  };
+
+  const renderPatientPage = () => {
     switch (currentPage) {
       case 'home': return <HomePage setActivePage={setCurrentPage} />;
       case 'agendamentos': return <AgendamentosPage user={user} />;
       case 'playlists': return <PlaylistsPage user={user} />;
-      case 'historico': return <HistoricoPage />;
+      case 'historico': return <HistoricoPage user={user} />;
       case 'perfil': return <ProfilePage onLogout={handleLogout} />;
       default: return <HomePage setActivePage={setCurrentPage} />;
     }
   };
 
-  if (!isLoggedIn) {
-    return <LoginPage onLoginSuccess={() => {}} />;
+  const renderTherapistPage = () => {
+    switch (currentPage) {
+      case 'dashboard':
+      default:
+        return <TherapistDashboardPage />;
+    }
+  };
+
+  if (isLoading) {
+    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontFamily: '"Inter", sans-serif' }}>Carregando...</div>;
+  }
+
+  if (!user) {
+    if (!selectedRole) {
+      return <RoleSelectionScreen onSelectRole={handleSelectRole} />;
+    }
+    return <LoginPage onLoginSuccess={() => { /* o onAuthStateChanged cuida de tudo */ }} />;
   }
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
-      <Navbar activePage={currentPage} setActivePage={setCurrentPage} onLogout={handleLogout} />
+      <Navbar activePage={currentPage} setActivePage={setCurrentPage} onLogout={handleLogout} userRole={userRole} />
       <main style={{ flexGrow: 1, backgroundColor: '#F9FAFB', overflowY: 'auto' }}>
-        {renderPage()}
+        {userRole === 'therapist' ? renderTherapistPage() : renderPatientPage()}
       </main>
     </div>
   );
