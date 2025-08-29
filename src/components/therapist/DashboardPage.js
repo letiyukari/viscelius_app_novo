@@ -4,11 +4,11 @@ import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import Icons from '../../components/common/Icons';
 import AddPatientModal from '../../components/therapist/AddPatientModal';
 import Notification from '../../components/common/Notification';
-import PatientDetailModal from '../../components/therapist/PatientDetailModal'; // IMPORTAÇÃO NOVA
+import PatientDetailModal from '../../components/therapist/PatientDetailModal';
 
 const TherapistDashboardPage = ({ user }) => {
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-    const [viewingPatient, setViewingPatient] = useState(null); // ESTADO NOVO: guarda o paciente que estamos vendo
+    const [viewingPatient, setViewingPatient] = useState(null); // Estado para guardar o paciente selecionado
     const [patients, setPatients] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -17,10 +17,7 @@ const TherapistDashboardPage = ({ user }) => {
     useEffect(() => {
         if (!user) return;
         const usersCollectionRef = collection(db, 'users');
-        const q = query(usersCollectionRef, 
-            where("role", "==", "patient"),
-            where("therapistUid", "==", user.uid)
-        );
+        const q = query(usersCollectionRef, where("therapistUid", "==", user.uid));
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const patientsData = [];
             querySnapshot.forEach((doc) => {
@@ -49,10 +46,6 @@ const TherapistDashboardPage = ({ user }) => {
         patientInfo: {},
         patientName: { margin: 0, color: '#1F2937', fontWeight: 600, fontSize: '1.2rem' },
         patientDetails: { margin: '4px 0 0 0', color: '#6B7280', fontSize: '0.9rem' },
-        cardBody: { display: 'flex', justifyContent: 'space-around', color: '#4B5563', borderTop: '1px solid #F3F4F6', paddingTop: '1rem', marginTop: '1rem' },
-        infoBox: { textAlign: 'center' },
-        infoValue: { fontWeight: '600', fontSize: '1.2rem', color: '#1F2937', margin: '0 0 4px 0' },
-        infoLabel: { fontSize: '0.8rem', margin: 0 },
     };
     
     const handleCardHover = (e, enter) => { if (enter) { e.currentTarget.style.transform = 'translateY(-5px)'; e.currentTarget.style.boxShadow = '0 8px 20px rgba(0, 0, 0, 0.08)'; } else { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.05)'; } };
@@ -88,20 +81,10 @@ const TherapistDashboardPage = ({ user }) => {
                             <div style={styles.cardHeader}>
                                 <div style={styles.patientAvatar}><Icons.UserIcon style={{ color: '#8B5CF6' }} /></div>
                                 <div style={styles.patientInfo}>
-                                    <h3 style={styles.patientName}>{patient.name || 'Nome não cadastrado'}</h3>
-                                    <p style={styles.patientDetails}>{patient.email || `Idade: ${patient.age}`}</p>
+                                    <h3 style={styles.patientName}>{patient.name}</h3>
+                                    <p style={styles.patientDetails}>Idade: {patient.age}</p>
                                 </div>
                             </div>
-                            <div style={styles.cardBody}>
-                               <div style={styles.infoBox}>
-                                   <p style={styles.infoValue}>8</p>
-                                   <p style={styles.infoLabel}>Sessões Totais</p>
-                               </div>
-                               <div style={styles.infoBox}>
-                                   <p style={styles.infoValue}>2</p>
-                                   <p style={styles.infoLabel}>Próximas</p>
-                               </div>
-                           </div>
                         </div>
                     )) : <p>Nenhum paciente encontrado. Clique em "+ Adicionar Paciente" para começar.</p>}
                 </div>
