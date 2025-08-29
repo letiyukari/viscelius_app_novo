@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { auth, db } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 
+// Páginas e Componentes
 import RoleSelectionScreen from './screens/RoleSelectionScreen';
 import LoginPage from './screens/auth/LoginPage';
 import Navbar from './components/layout/Navbar';
@@ -12,31 +14,39 @@ import PlaylistsPage from './screens/patient/PlaylistsPage';
 import HistoricoPage from './screens/patient/HistoricoPage';
 import ProfilePage from './screens/patient/ProfilePage';
 import TherapistDashboardPage from './screens/therapist/DashboardPage';
+import SessionPage from './screens/therapist/SessionPage';
+
+const MainLayout = ({ user, userRole, onLogout, children }) => {
+  const navigate = useNavigate();
+  return (
+    <div style={{ display: 'flex', minHeight: '100vh' }}>
+      <Navbar onLogout={onLogout} userRole={userRole} navigate={navigate} />
+      <main style={{ flexGrow: 1, backgroundColor: '#F9FAFB', overflowY: 'auto' }}>
+        {children}
+      </main>
+    </div>
+  );
+};
 
 function App() {
   const [user, setUser] = useState(null);
   const [userRole, setUserRole] = useState(null);
-  const [selectedRole, setSelectedRole] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [currentPage, setCurrentPage] = useState('');
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
-        setUser(currentUser);
         const userDocRef = doc(db, 'users', currentUser.uid);
         const userDocSnap = await getDoc(userDocRef);
+        let finalUser = { ...currentUser };
         if (userDocSnap.exists()) {
           const userData = userDocSnap.data();
-          const role = userData.role || 'patient';
-          setUserRole(role);
-          setCurrentPage(role === 'therapist' ? 'dashboard' : 'home');
+          setUserRole(userData.role || 'patient');
+          finalUser = { ...finalUser, ...userData };
         } else {
-          // Se o documento do usuário ainda não existe no Firestore (ex: 1º login com Google),
-          // assume um perfil padrão e a LoginPage cuidará de criar o documento.
-          setUserRole(selectedRole || 'patient');
-          setCurrentPage('home');
+          setUserRole('patient');
         }
+        setUser(finalUser);
       } else {
         setUser(null);
         setUserRole(null);
@@ -44,56 +54,48 @@ function App() {
       setIsLoading(false);
     });
     return () => unsubscribe();
-  }, [selectedRole]); // Adicionado selectedRole como dependência
-
-  const handleSelectRole = (role) => {
-    setSelectedRole(role);
-  };
+  }, []);
 
   const handleLogout = () => {
     auth.signOut();
-    setSelectedRole(null);
-    setCurrentPage('');
-  };
-
-  const renderPatientPage = () => {
-    switch (currentPage) {
-      case 'home': return <HomePage user={user} setActivePage={setCurrentPage} />;
-      case 'agendamentos': return <AgendamentosPage user={user} />;
-      case 'playlists': return <PlaylistsPage user={user} />;
-      case 'historico': return <HistoricoPage user={user} />;
-      case 'perfil': return <ProfilePage user={user} onLogout={handleLogout} />;
-      default: return <HomePage user={user} setActivePage={setCurrentPage} />;
-    }
-  };
-
-  const renderTherapistPage = () => {
-    switch (currentPage) {
-      case 'dashboard':
-      default:
-        return <TherapistDashboardPage />;
-    }
   };
 
   if (isLoading) {
     return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Carregando...</div>;
   }
 
-  if (!user) {
-    if (!selectedRole) {
-      return <RoleSelectionScreen onSelectRole={handleSelectRole} />;
-    }
-    // CORREÇÃO: Passa o 'selectedRole' para a LoginPage
-    return <LoginPage onLoginSuccess={() => {}} selectedRole={selectedRole} />;
-  }
-
   return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
-      <Navbar activePage={currentPage} setActivePage={setCurrentPage} onLogout={handleLogout} userRole={userRole} />
-      <main style={{ flexGrow: 1, backgroundColor: '#F9FAFB', overflowY: 'auto' }}>
-        {userRole === 'therapist' ? renderTherapistPage() : renderPatientPage()}
-      </main>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        {!user ? (
+          <>
+            <Route path="/login/:role" element={<LoginPage />} />
+            <Route path="/select-role" element={<RoleSelectionScreen />} />
+            <Route path="*" element={<Navigate to="/select-role" />} />
+          </>
+        ) : (
+          <>
+            {userRole === 'therapist' ? (
+              <>
+                <Route path="/dashboard" element={<MainLayout user={user} userRole={userRole} onLogout={handleLogout}><TherapistDashboardPage user={user} /></MainLayout>} />
+                <Route path="/perfil" element={<MainLayout user={user} userRole={userRole} onLogout={handleLogout}><ProfilePage user={user} onLogout={handleLogout}/></MainLayout>} />
+                <Route path="/sessao/:patientId" element={<MainLayout user={user} userRole={userRole} onLogout={handleLogout}><SessionPage /></MainLayout>} />
+                <Route path="*" element={<Navigate to="/dashboard" />} />
+              </>
+            ) : (
+              <>
+                <Route path="/inicio" element={<MainLayout user={user} userRole={userRole} onLogout={handleLogout}><HomePage user={user} /></MainLayout>} />
+                <Route path="/agendamentos" element={<MainLayout user={user} userRole={userRole} onLogout={handleLogout}><AgendamentosPage user={user} /></MainLayout>} />
+                <Route path="/playlists" element={<MainLayout user={user} userRole={userRole} onLogout={handleLogout}><PlaylistsPage user={user} /></MainLayout>} />
+                <Route path="/historico" element={<MainLayout user={user} userRole={userRole} onLogout={handleLogout}><HistoricoPage user={user} /></MainLayout>} />
+                <Route path="/perfil" element={<MainLayout user={user} userRole={userRole} onLogout={handleLogout}><ProfilePage user={user} onLogout={handleLogout}/></MainLayout>} />
+                <Route path="*" element={<Navigate to="/inicio" />} />
+              </>
+            )}
+          </>
+        )}
+      </Routes>
+    </BrowserRouter>
   );
 }
 
