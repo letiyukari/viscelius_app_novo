@@ -1,18 +1,30 @@
 import React, { useState } from 'react';
 
-// --- PÁGINA DE PERFIL ---
-const ProfilePage = ({ onLogout }) => {
-    const [userData, setUserData] = useState({
-        name: "Ana Oliveira",
-        email: "ana.oliveira@email.com",
+/**
+ * Componente ProfilePage
+ * Exibe as informações do perfil do paciente e permite o acesso a outras
+ * funcionalidades da conta, como edição e logout.
+ * @param {object} props - Propriedades do componente.
+ * @param {object} props.user - Objeto do usuário autenticado, vindo do App.js.
+ * @param {function} props.onLogout - Função para executar o logout.
+ */
+const ProfilePage = ({ user, onLogout }) => {
+    
+    // Objeto que formata os dados do usuário para exibição na tela,
+    // usando a prop 'user' recebida para garantir que os dados sejam sempre os mais atuais.
+    const userData = {
+        name: user ? (user.displayName || "Nome não informado") : "Carregando...",
+        email: user ? user.email : "Carregando...",
+        avatar: user ? user.photoURL : "https://i.pravatar.cc/150", // Puxa a foto do Google ou usa uma padrão
         phone: "+55 11 98765-4321",
         memberSince: "Março, 2025",
-        avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=2070&auto=format&fit=crop",
         plan: "Plano Premium Mensal",
-    });
+    };
 
+    // Estado para controlar qual sub-seção do perfil está ativa (principal, editar, etc.)
     const [activeView, setActiveView] = useState('main');
 
+    // Sub-componente para a visualização principal do perfil
     const MainProfileView = () => (
         <div style={styles.rightColumn}>
             <div style={styles.card}>
@@ -44,6 +56,7 @@ const ProfilePage = ({ onLogout }) => {
         </div>
     );
 
+    // Sub-componente para a visualização de edição de informações
     const EditInfoView = () => (
         <div style={styles.rightColumn}>
             <div style={styles.card}>
@@ -61,6 +74,7 @@ const ProfilePage = ({ onLogout }) => {
         </div>
     );
 
+    // Sub-componente para a visualização de alteração de senha
     const ChangePasswordView = () => (
         <div style={styles.rightColumn}>
             <div style={styles.card}>
@@ -77,6 +91,7 @@ const ProfilePage = ({ onLogout }) => {
         </div>
     );
 
+    // Sub-componente para a visualização de gerenciamento de assinatura
     const ManageSubscriptionView = () => {
         const plans = [
             { name: "Plano Básico", price: "R$ 29,90/mês", features: ["Acesso a playlists", "Agendamento de 2 sessões/mês"], current: false },
@@ -109,6 +124,7 @@ const ProfilePage = ({ onLogout }) => {
         );
     }
 
+    // Função que decide qual sub-componente renderizar
     const renderActiveView = () => {
         switch (activeView) {
             case 'editInfo': return <EditInfoView />;
@@ -119,6 +135,7 @@ const ProfilePage = ({ onLogout }) => {
         }
     };
 
+    // Objeto de estilos completo para o componente
     const styles = {
         pageContainer: { padding: '2rem 3.5rem', backgroundColor: '#F9FAFB', fontFamily: '"Inter", sans-serif', overflowY: 'auto', height: '100vh' },
         header: { marginBottom: '2.5rem' },
@@ -157,24 +174,29 @@ const ProfilePage = ({ onLogout }) => {
         planButtonCurrent: { backgroundColor: '#8B5CF6', color: '#fff' }
     };
 
+    // Renderização principal do componente
     return (
         <div style={styles.pageContainer}>
              <header style={styles.header}>
-                <h1 style={styles.title}>Conta e Perfil</h1>
-            </header>
-            <div style={styles.mainGrid}>
-                <div style={styles.leftColumn}>
-                    <div style={styles.profileCard}>
-                        <div style={styles.avatarContainer} onMouseEnter={(e) => e.currentTarget.children[1].style.opacity = 1} onMouseLeave={(e) => e.currentTarget.children[1].style.opacity = 0}>
-                            <img src={userData.avatar} alt="User Avatar" style={styles.avatar}/>
-                            <div style={styles.avatarOverlay}><span>Alterar</span></div>
-                        </div>
-                        <h2 style={styles.name}>{userData.name}</h2>
-                        <p style={styles.email}>{userData.email}</p>
-                    </div>
-                </div>
-                {renderActiveView()}
-            </div>
+                 <h1 style={styles.title}>Conta e Perfil</h1>
+             </header>
+             <div style={styles.mainGrid}>
+                 <div style={styles.leftColumn}>
+                     <div style={styles.profileCard}>
+                         <div 
+                            style={styles.avatarContainer} 
+                            onMouseEnter={(e) => e.currentTarget.children[1].style.opacity = 1} 
+                            onMouseLeave={(e) => e.currentTarget.children[1].style.opacity = 0}
+                         >
+                             <img src={userData.avatar} alt="Avatar do Usuário" style={styles.avatar}/>
+                             <div style={styles.avatarOverlay}><span>Alterar</span></div>
+                         </div>
+                         <h2 style={styles.name}>{userData.name}</h2>
+                         <p style={styles.email}>{userData.email}</p>
+                     </div>
+                 </div>
+                 {renderActiveView()}
+             </div>
         </div>
     );
 };

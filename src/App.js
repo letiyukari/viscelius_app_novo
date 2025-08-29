@@ -1,19 +1,17 @@
-// src/App.js
 import React, { useState, useEffect } from 'react';
-import { auth, db } from './firebase'; // CAMINHO CORRIGIDO
+import { auth, db } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 
-// --- PÁGINAS E COMPONENTES ---
-import RoleSelectionScreen from './screens/RoleSelectionScreen'; // CAMINHO CORRIGIDO
-import LoginPage from './screens/auth/LoginPage'; // CAMINHO CORRIGIDO
-import Navbar from './components/layout/Navbar'; // CAMINHO CORRIGIDO
-import HomePage from './screens/patient/HomePage'; // CAMINHO CORRIGIDO
-import AgendamentosPage from './screens/patient/AgendamentosPage'; // CAMINHO CORRIGIDO
-import PlaylistsPage from './screens/patient/PlaylistsPage'; // CAMINHO CORRIGIDO
-import HistoricoPage from './screens/patient/HistoricoPage'; // CAMINHO CORRIGIDO
-import ProfilePage from './screens/patient/ProfilePage'; // CAMINHO CORRIGIDO
-import TherapistDashboardPage from './screens/therapist/DashboardPage'; // CAMINHO CORRIGIDO
+import RoleSelectionScreen from './screens/RoleSelectionScreen';
+import LoginPage from './screens/auth/LoginPage';
+import Navbar from './components/layout/Navbar';
+import HomePage from './screens/patient/HomePage';
+import AgendamentosPage from './screens/patient/AgendamentosPage';
+import PlaylistsPage from './screens/patient/PlaylistsPage';
+import HistoricoPage from './screens/patient/HistoricoPage';
+import ProfilePage from './screens/patient/ProfilePage';
+import TherapistDashboardPage from './screens/therapist/DashboardPage';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -34,7 +32,9 @@ function App() {
           setUserRole(role);
           setCurrentPage(role === 'therapist' ? 'dashboard' : 'home');
         } else {
-          setUserRole('patient');
+          // Se o documento do usuário ainda não existe no Firestore (ex: 1º login com Google),
+          // assume um perfil padrão e a LoginPage cuidará de criar o documento.
+          setUserRole(selectedRole || 'patient');
           setCurrentPage('home');
         }
       } else {
@@ -44,7 +44,7 @@ function App() {
       setIsLoading(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [selectedRole]); // Adicionado selectedRole como dependência
 
   const handleSelectRole = (role) => {
     setSelectedRole(role);
@@ -58,12 +58,12 @@ function App() {
 
   const renderPatientPage = () => {
     switch (currentPage) {
-      case 'home': return <HomePage setActivePage={setCurrentPage} />;
+      case 'home': return <HomePage user={user} setActivePage={setCurrentPage} />;
       case 'agendamentos': return <AgendamentosPage user={user} />;
       case 'playlists': return <PlaylistsPage user={user} />;
       case 'historico': return <HistoricoPage user={user} />;
-      case 'perfil': return <ProfilePage onLogout={handleLogout} />;
-      default: return <HomePage setActivePage={setCurrentPage} />;
+      case 'perfil': return <ProfilePage user={user} onLogout={handleLogout} />;
+      default: return <HomePage user={user} setActivePage={setCurrentPage} />;
     }
   };
 
@@ -76,14 +76,15 @@ function App() {
   };
 
   if (isLoading) {
-    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontFamily: '"Inter", sans-serif' }}>Carregando...</div>;
+    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Carregando...</div>;
   }
 
   if (!user) {
     if (!selectedRole) {
       return <RoleSelectionScreen onSelectRole={handleSelectRole} />;
     }
-    return <LoginPage onLoginSuccess={() => { /* o onAuthStateChanged cuida de tudo */ }} />;
+    // CORREÇÃO: Passa o 'selectedRole' para a LoginPage
+    return <LoginPage onLoginSuccess={() => {}} selectedRole={selectedRole} />;
   }
 
   return (
