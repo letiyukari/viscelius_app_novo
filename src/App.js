@@ -3,8 +3,11 @@ import { auth, db } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 
+// Importação das telas, incluindo as novas de registro
 import RoleSelectionScreen from './screens/RoleSelectionScreen';
 import LoginPage from './screens/auth/LoginPage';
+import RegisterPage from './screens/auth/RegisterPage';
+import RegisterTherapistPage from './screens/auth/RegisterTherapistPage';
 import Navbar from './components/layout/Navbar';
 import HomePage from './screens/patient/HomePage';
 import AgendamentosPage from './screens/patient/AgendamentosPage';
@@ -19,6 +22,7 @@ function App() {
   const [selectedRole, setSelectedRole] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState('');
+  const [authScreen, setAuthScreen] = useState('login'); // 'login' ou 'register'
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -27,13 +31,10 @@ function App() {
         const userDocRef = doc(db, 'users', currentUser.uid);
         const userDocSnap = await getDoc(userDocRef);
         if (userDocSnap.exists()) {
-          const userData = userDocSnap.data();
-          const role = userData.role || 'patient';
+          const role = userDocSnap.data().role || 'patient';
           setUserRole(role);
           setCurrentPage(role === 'therapist' ? 'dashboard' : 'home');
         } else {
-          // Se o documento do usuário ainda não existe no Firestore (ex: 1º login com Google),
-          // assume um perfil padrão e a LoginPage cuidará de criar o documento.
           setUserRole(selectedRole || 'patient');
           setCurrentPage('home');
         }
@@ -44,7 +45,7 @@ function App() {
       setIsLoading(false);
     });
     return () => unsubscribe();
-  }, [selectedRole]); // Adicionado selectedRole como dependência
+  }, [selectedRole]);
 
   const handleSelectRole = (role) => {
     setSelectedRole(role);
@@ -54,6 +55,7 @@ function App() {
     auth.signOut();
     setSelectedRole(null);
     setCurrentPage('');
+    setAuthScreen('login');
   };
 
   const renderPatientPage = () => {
@@ -79,14 +81,37 @@ function App() {
     return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Carregando...</div>;
   }
 
+  // Lógica principal para telas de não-logado
   if (!user) {
+    // Se nenhum perfil foi escolhido, mostra a tela de seleção
     if (!selectedRole) {
       return <RoleSelectionScreen onSelectRole={handleSelectRole} />;
     }
-    // CORREÇÃO: Passa o 'selectedRole' para a LoginPage
-    return <LoginPage onLoginSuccess={() => {}} selectedRole={selectedRole} />;
+    
+    // Se um perfil foi escolhido, decide entre a tela de Login ou Cadastro
+    if (authScreen === 'login') {
+        return <LoginPage 
+            onLoginSuccess={() => {}} 
+            selectedRole={selectedRole} 
+            onNavigateToRegister={() => setAuthScreen('register')} 
+        />;
+    } else { // authScreen === 'register'
+        // Decide qual página de CADASTRO mostrar
+        if (selectedRole === 'patient') {
+            return <RegisterPage 
+                selectedRole={selectedRole} 
+                onNavigateToLogin={() => setAuthScreen('login')} 
+            />;
+        } else { // selectedRole === 'therapist'
+            return <RegisterTherapistPage 
+                selectedRole={selectedRole} 
+                onNavigateToLogin={() => setAuthScreen('login')} 
+            />;
+        }
+    }
   }
 
+  // Se o usuário está logado, mostra a interface principal
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
       <Navbar activePage={currentPage} setActivePage={setCurrentPage} onLogout={handleLogout} userRole={userRole} />
