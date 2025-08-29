@@ -1,15 +1,31 @@
+// src/screens/patient/HomePage.js (VERSÃO FINAL CORRIGIDA)
 import React from 'react';
+
+// Você talvez precise ajustar o caminho aqui dependendo de onde está seu arquivo de Ícones
 import { BellIcon, PlayIcon, WindIcon } from '../../common/Icons';
 
+/**
+ * Componente HomePage
+ * Tela inicial para o usuário do tipo "paciente".
+ * @param {object} props - Propriedades do componente.
+ * @param {object} props.user - Objeto do usuário autenticado, vindo do App.js.
+ * @param {function} props.setActivePage - Função para alterar a página ativa.
+ */
 const HomePage = ({ user, setActivePage }) => {
+    
+    // Objeto de dados da página, agora preenchido com as informações do usuário real
     const patientData = {
+        // Usa o nome de exibição do usuário (vindo do Google); se não existir, usa o e-mail.
         name: user ? (user.displayName || user.email) : "Carregando...",
+        
+        // Dados de exemplo que podem ser dinâmicos no futuro
         daysInApp: 42,
         sessionsCount: 8,
         nextSession: { date: "28 de Agosto, 2025", time: "14:30", therapist: "Dr. Carlos Mendes" },
         therapistInfo: { name: "Dr. Carlos Mendes", specialty: "Musicoterapeuta Clínico", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=1374&auto=format&fit=crop" }
     };
     
+    // O restante do seu código original (estilos, JSX) permanece o mesmo
     const styles = {
         pageContainer: { padding: '2rem 3.5rem', backgroundColor: '#F9FAFB', fontFamily: '"Inter", sans-serif' },
         header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' },
