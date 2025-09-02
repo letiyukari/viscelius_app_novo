@@ -1,10 +1,8 @@
-// src/firebase.js
 import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-import { getAuth } from "firebase/auth"; // Importar o serviço de Autenticação
-import { getFirestore } from "firebase/firestore"; // Importar o serviço do Cloud Firestore
+import { getAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
 
-// Suas credenciais de configuração do Firebase
+// Suas credenciais de configuração do Firebase (mantive as que você me passou)
 const firebaseConfig = {
   apiKey: "AIzaSyDmNhuxBudC_AuEEP21miH-gtvNSJ4J__Y",
   authDomain: "visceliusappdb.firebaseapp.com",
@@ -17,10 +15,8 @@ const firebaseConfig = {
 
 // Inicializar o Firebase
 const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
 
-// Inicializar e exportar serviços
-const auth = getAuth(app);
-const db = getFirestore(app);
-
-export { auth, db, analytics };
+// Inicializar e exportar os serviços que estamos usando
+// Esta é a maneira mais limpa e padrão de fazer isso
+export const auth = getAuth(app);
+export const db = getFirestore(app);
