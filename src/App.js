@@ -16,6 +16,7 @@ import PlaylistsPage from './screens/patient/PlaylistsPage';
 import HistoricoPage from './screens/patient/HistoricoPage';
 import ProfilePage from './screens/patient/ProfilePage';
 import TherapistDashboardPage from './screens/therapist/DashboardPage';
+import TherapistPlaylistsPage from './screens/therapist/PlaylistsPage'; // Nova importação
 import SessionPage from './screens/therapist/SessionPage';
 
 // Componente de Layout que agrupa as páginas que têm a Navbar
@@ -89,6 +90,7 @@ function App() {
               // Rotas do Terapeuta
               <>
                 <Route path="/dashboard" element={<MainLayout user={user} userRole={userRole} onLogout={handleLogout}><TherapistDashboardPage user={user} /></MainLayout>} />
+                <Route path="/playlists" element={<MainLayout user={user} userRole={userRole} onLogout={handleLogout}><TherapistPlaylistsPage user={user} /></MainLayout>} />
                 <Route path="/perfil" element={<MainLayout user={user} userRole={userRole} onLogout={handleLogout}><ProfilePage user={user} /></MainLayout>} />
                 <Route path="/sessao/:patientId" element={<MainLayout user={user} userRole={userRole} onLogout={handleLogout}><SessionPage /></MainLayout>} />
                 <Route path="*" element={<Navigate to="/dashboard" />} />
