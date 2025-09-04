@@ -1,10 +1,10 @@
 // src/firebase.js
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
-import { getAuth } from "firebase/auth"; // Importar o serviço de Autenticação
-import { getFirestore } from "firebase/firestore"; // Importar o serviço do Cloud Firestore
+import { getAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
 
-// Suas credenciais de configuração do Firebase
+// As suas credenciais de configuração do Firebase
 const firebaseConfig = {
   apiKey: "AIzaSyDmNhuxBudC_AuEEP21miH-gtvNSJ4J__Y",
   authDomain: "visceliusappdb.firebaseapp.com",

@@ -1,30 +1,90 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { db, auth } from '../../firebase';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { updateProfile } from 'firebase/auth';
+import Notification from '../../components/common/Notification';
+import Icons from '../../components/common/Icons';
 
-/**
- * Componente ProfilePage
- * Exibe as informações do perfil do paciente e permite o acesso a outras
- * funcionalidades da conta, como edição e logout.
- * @param {object} props - Propriedades do componente.
- * @param {object} props.user - Objeto do usuário autenticado, vindo do App.js.
- * @param {function} props.onLogout - Função para executar o logout.
- */
 const ProfilePage = ({ user, onLogout }) => {
-    
-    // Objeto que formata os dados do usuário para exibição na tela,
-    // usando a prop 'user' recebida para garantir que os dados sejam sempre os mais atuais.
-    const userData = {
-        name: user ? (user.displayName || "Nome não informado") : "Carregando...",
-        email: user ? user.email : "Carregando...",
-        avatar: user ? user.photoURL : "https://i.pravatar.cc/150", // Puxa a foto do Google ou usa uma padrão
-        phone: "+55 11 98765-4321",
-        memberSince: "Março, 2025",
-        plan: "Plano Premium Mensal",
+    // --- INFORMAÇÕES DO CLOUDINARY ---
+    const CLOUDINARY_CLOUD_NAME = "dpncctfyy";
+    const CLOUDINARY_UPLOAD_PRESET = "viscelius_profiles";
+    // ---------------------------------
+
+    const [userData, setUserData] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [activeView, setActiveView] = useState('main');
+    const [uploading, setUploading] = useState(false);
+    const [notification, setNotification] = useState({ message: '', type: '' });
+    const fileInputRef = useRef(null);
+
+    useEffect(() => {
+        if (user) {
+            const userDocRef = doc(db, 'users', user.uid);
+            getDoc(userDocRef).then((docSnap) => {
+                const combinedData = {
+                    ...user, // Dados do Auth (uid, email, displayName, photoURL)
+                    ...(docSnap.exists() ? docSnap.data() : {}), // Dados adicionais do Firestore
+                    // Garante que os dados de Auth (mais recentes) tenham prioridade
+                    displayName: user.displayName,
+                    photoURL: user.photoURL,
+                };
+                setUserData(combinedData);
+                setLoading(false);
+            });
+        }
+    }, [user]);
+
+    const handlePhotoUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        setUploading(true);
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+
+        try {
+            const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!response.ok) throw new Error('Falha no upload para o Cloudinary');
+
+            const data = await response.json();
+            const photoURL = data.secure_url;
+
+            await updateProfile(auth.currentUser, { photoURL });
+            const userDocRef = doc(db, 'users', user.uid);
+            await updateDoc(userDocRef, { photoURL });
+
+            setUserData(prevData => ({ ...prevData, photoURL }));
+            setNotification({ message: 'Foto de perfil atualizada com sucesso!', type: 'success' });
+            window.location.reload();
+        } catch (error) {
+            console.error("Erro no upload:", error);
+            setNotification({ message: 'Falha ao atualizar a foto de perfil.', type: 'error' });
+        } finally {
+            setUploading(false);
+        }
     };
 
-    // Estado para controlar qual sub-seção do perfil está ativa (principal, editar, etc.)
-    const [activeView, setActiveView] = useState('main');
+    const triggerFileSelect = () => {
+        if (!uploading && fileInputRef.current) {
+            fileInputRef.current.click();
+        }
+    };
 
-    // Sub-componente para a visualização principal do perfil
+    const displayData = {
+        name: userData ? (userData.displayName || "Nome não informado") : "A carregar...",
+        email: userData ? userData.email : "A carregar...",
+        avatar: userData ? userData.photoURL : `https://i.pravatar.cc/150?u=${user.uid}`,
+        phone: userData?.phone || "+55 11 98765-4321", // Exemplo
+        memberSince: "Março, 2025", // Exemplo
+        plan: "Plano Premium Mensal", // Exemplo
+    };
+
     const MainProfileView = () => (
         <div style={styles.rightColumn}>
             <div style={styles.card}>
@@ -33,10 +93,10 @@ const ProfilePage = ({ user, onLogout }) => {
                     <button style={styles.editButton} onClick={() => setActiveView('editInfo')}>Editar</button>
                 </div>
                 <div>
-                    <div style={styles.infoRow}><span style={styles.infoLabel}>Nome Completo</span><span style={styles.infoValue}>{userData.name}</span></div>
-                    <div style={styles.infoRow}><span style={styles.infoLabel}>Email</span><span style={styles.infoValue}>{userData.email}</span></div>
-                    <div style={styles.infoRow}><span style={styles.infoLabel}>Telefone</span><span style={styles.infoValue}>{userData.phone}</span></div>
-                    <div style={styles.infoRow}><span style={styles.infoLabel}>Membro desde</span><span style={styles.infoValue}>{userData.memberSince}</span></div>
+                    <div style={styles.infoRow}><span style={styles.infoLabel}>Nome Completo</span><span style={styles.infoValue}>{displayData.name}</span></div>
+                    <div style={styles.infoRow}><span style={styles.infoLabel}>Email</span><span style={styles.infoValue}>{displayData.email}</span></div>
+                    <div style={styles.infoRow}><span style={styles.infoLabel}>Telefone</span><span style={styles.infoValue}>{displayData.phone}</span></div>
+                    <div style={styles.infoRow}><span style={styles.infoLabel}>Membro desde</span><span style={styles.infoValue}>{displayData.memberSince}</span></div>
                 </div>
             </div>
             <div style={styles.card}>
@@ -45,7 +105,7 @@ const ProfilePage = ({ user, onLogout }) => {
             </div>
             <div style={styles.card}>
                 <div style={styles.cardHeader}><h3 style={styles.cardTitle}>Assinatura e Pagamentos</h3></div>
-                <div style={styles.infoRow}><span style={styles.infoLabel}>Plano Atual</span><span style={styles.infoValue}>{userData.plan}</span></div>
+                <div style={styles.infoRow}><span style={styles.infoLabel}>Plano Atual</span><span style={styles.infoValue}>{displayData.plan}</span></div>
                 <div style={styles.actionRow}><p style={{margin: 0, color: '#374151'}}>Faturamento</p><button style={styles.actionButton} onClick={() => setActiveView('manageSubscription')}>Gerenciar Assinatura</button></div>
             </div>
             <div style={styles.card}>
@@ -56,15 +116,14 @@ const ProfilePage = ({ user, onLogout }) => {
         </div>
     );
 
-    // Sub-componente para a visualização de edição de informações
     const EditInfoView = () => (
         <div style={styles.rightColumn}>
             <div style={styles.card}>
                 <div style={styles.cardHeader}><h3 style={styles.cardTitle}>Editar Informações</h3></div>
                 <form style={{display: 'flex', flexDirection: 'column', gap: '1.5rem'}}>
-                    <div style={styles.formGroup}><label style={styles.formLabel}>Nome Completo</label><input type="text" style={styles.formInput} defaultValue={userData.name} /></div>
-                    <div style={styles.formGroup}><label style={styles.formLabel}>Email</label><input type="email" style={styles.formInput} defaultValue={userData.email} /></div>
-                    <div style={styles.formGroup}><label style={styles.formLabel}>Telefone</label><input type="tel" style={styles.formInput} defaultValue={userData.phone} /></div>
+                    <div style={styles.formGroup}><label style={styles.formLabel}>Nome Completo</label><input type="text" style={styles.formInput} defaultValue={displayData.name} /></div>
+                    <div style={styles.formGroup}><label style={styles.formLabel}>Email</label><input type="email" style={styles.formInput} defaultValue={displayData.email} /></div>
+                    <div style={styles.formGroup}><label style={styles.formLabel}>Telefone</label><input type="tel" style={styles.formInput} defaultValue={displayData.phone} /></div>
                     <div style={styles.formActions}>
                         <button type="button" style={styles.cancelButton} onClick={() => setActiveView('main')}>Cancelar</button>
                         <button type="submit" style={styles.saveButton}>Salvar Alterações</button>
@@ -74,7 +133,6 @@ const ProfilePage = ({ user, onLogout }) => {
         </div>
     );
 
-    // Sub-componente para a visualização de alteração de senha
     const ChangePasswordView = () => (
         <div style={styles.rightColumn}>
             <div style={styles.card}>
@@ -90,8 +148,7 @@ const ProfilePage = ({ user, onLogout }) => {
             </div>
         </div>
     );
-
-    // Sub-componente para a visualização de gerenciamento de assinatura
+    
     const ManageSubscriptionView = () => {
         const plans = [
             { name: "Plano Básico", price: "R$ 29,90/mês", features: ["Acesso a playlists", "Agendamento de 2 sessões/mês"], current: false },
@@ -124,7 +181,6 @@ const ProfilePage = ({ user, onLogout }) => {
         );
     }
 
-    // Função que decide qual sub-componente renderizar
     const renderActiveView = () => {
         switch (activeView) {
             case 'editInfo': return <EditInfoView />;
@@ -135,7 +191,6 @@ const ProfilePage = ({ user, onLogout }) => {
         }
     };
 
-    // Objeto de estilos completo para o componente
     const styles = {
         pageContainer: { padding: '2rem 3.5rem', backgroundColor: '#F9FAFB', fontFamily: '"Inter", sans-serif', overflowY: 'auto', height: '100vh' },
         header: { marginBottom: '2.5rem' },
@@ -144,9 +199,9 @@ const ProfilePage = ({ user, onLogout }) => {
         leftColumn: {},
         rightColumn: { display: 'flex', flexDirection: 'column', gap: '2rem' },
         profileCard: { backgroundColor: '#fff', borderRadius: '16px', border: '1px solid #E5E7EB', padding: '2rem', textAlign: 'center', position: 'relative' },
-        avatarContainer: { position: 'relative', width: '120px', margin: '0 auto 1rem auto' },
+        avatarContainer: { position: 'relative', width: '120px', margin: '0 auto 1rem auto', cursor: 'pointer' },
         avatar: { width: '120px', height: '120px', borderRadius: '50%', objectFit: 'cover', border: '4px solid #fff', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' },
-        avatarOverlay: { position: 'absolute', top: 0, left: 0, width: '120px', height: '120px', borderRadius: '50%', backgroundColor: 'rgba(0,0,0,0.4)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', opacity: 0, transition: 'opacity 0.3s' },
+        avatarOverlay: { position: 'absolute', top: 0, left: 0, width: '120px', height: '120px', borderRadius: '50%', backgroundColor: 'rgba(0,0,0,0.4)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: 'opacity 0.3s' },
         name: { color: '#1F2937', fontSize: '1.5rem', fontWeight: 600, margin: 0 },
         email: { color: '#6B7280', margin: '0.25rem 0 0 0' },
         card: { backgroundColor: '#fff', borderRadius: '16px', border: '1px solid #E5E7EB', padding: '2rem' },
@@ -173,26 +228,39 @@ const ProfilePage = ({ user, onLogout }) => {
         planButton: { marginTop: '1.5rem', width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #8B5CF6', backgroundColor: 'transparent', color: '#8B5CF6', fontWeight: 600, cursor: 'pointer' },
         planButtonCurrent: { backgroundColor: '#8B5CF6', color: '#fff' }
     };
+    
+    if (loading) {
+        return <div style={styles.pageContainer}>A carregar...</div>
+    }
 
-    // Renderização principal do componente
     return (
         <div style={styles.pageContainer}>
+             <Notification message={notification.message} type={notification.type} onDone={() => setNotification({ message: '', type: '' })} />
              <header style={styles.header}>
                  <h1 style={styles.title}>Conta e Perfil</h1>
              </header>
              <div style={styles.mainGrid}>
                  <div style={styles.leftColumn}>
                      <div style={styles.profileCard}>
+                        <input
+                            type="file"
+                            accept="image/png, image/jpeg"
+                            style={{ display: 'none' }}
+                            ref={fileInputRef}
+                            onChange={handlePhotoUpload}
+                            disabled={uploading}
+                        />
                          <div 
                             style={styles.avatarContainer} 
-                            onMouseEnter={(e) => e.currentTarget.children[1].style.opacity = 1} 
+                            onClick={triggerFileSelect}
+                            onMouseEnter={(e) => { if (!uploading) e.currentTarget.children[1].style.opacity = 1; }} 
                             onMouseLeave={(e) => e.currentTarget.children[1].style.opacity = 0}
                          >
-                             <img src={userData.avatar} alt="Avatar do Usuário" style={styles.avatar}/>
-                             <div style={styles.avatarOverlay}><span>Alterar</span></div>
+                             <img src={displayData.avatar} alt="Avatar do Utilizador" style={styles.avatar}/>
+                             <div style={styles.avatarOverlay}><span>{uploading ? 'A enviar...' : 'Alterar'}</span></div>
                          </div>
-                         <h2 style={styles.name}>{userData.name}</h2>
-                         <p style={styles.email}>{userData.email}</p>
+                         <h2 style={styles.name}>{displayData.name}</h2>
+                         <p style={styles.email}>{displayData.email}</p>
                      </div>
                  </div>
                  {renderActiveView()}
