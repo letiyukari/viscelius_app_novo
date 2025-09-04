@@ -14,6 +14,7 @@ const Navbar = ({ onLogout, userRole, navigate }) => {
 
     const therapistNavItems = [
         { id: 'dashboard', path: '/dashboard', icon: <Icons.HomeIcon />, label: 'Painel' },
+        { id: 'playlists', path: '/playlists', icon: <Icons.MusicIcon />, label: 'Playlists' },
         { id: 'perfil', path: '/perfil', icon: <Icons.UserIcon />, label: 'Perfil' }
     ];
 
