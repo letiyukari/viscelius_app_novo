@@ -1,14 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { auth, db } from './firebase';
-import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
 
-// Importação das telas, incluindo as novas de registro
+// Rotas & telas
 import RoleSelectionScreen from './screens/RoleSelectionScreen';
 import LoginPage from './screens/auth/LoginPage';
 import RegisterPage from './screens/auth/RegisterPage';
-import RegisterTherapistPage from './screens/auth/RegisterTherapistPage.js';
+import RegisterTherapistPage from './screens/auth/RegisterTherapistPage';
 import Navbar from './components/layout/Navbar';
 import HomePage from './screens/patient/HomePage';
 import AgendamentosPage from './screens/patient/AgendamentosPage';
@@ -16,10 +13,13 @@ import PlaylistsPage from './screens/patient/PlaylistsPage';
 import HistoricoPage from './screens/patient/HistoricoPage';
 import ProfilePage from './screens/patient/ProfilePage';
 import TherapistDashboardPage from './screens/therapist/DashboardPage';
-import TherapistPlaylistsPage from './screens/therapist/PlaylistsPage'; // Nova importação
+import TherapistPlaylistsPage from './screens/therapist/PlaylistsPage';
 import SessionPage from './screens/therapist/SessionPage';
 
-// Componente de Layout que agrupa as páginas que têm a Navbar
+import RequireRole from './routes/RequireRole';
+import { useAuth } from './context/AuthContext';
+
+// Layout principal com navbar
 const MainLayout = ({ user, userRole, onLogout, children }) => {
   const navigate = useNavigate();
   return (
@@ -33,48 +33,20 @@ const MainLayout = ({ user, userRole, onLogout, children }) => {
 };
 
 function App() {
-  const [user, setUser] = useState(null);
-  const [userRole, setUserRole] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const { user, userRole, loading, logout } = useAuth();
 
-  // O React Router agora cuida do estado da página, então não precisamos mais de 'currentPage'
-  // Nem de 'selectedRole', pois a URL (/login/:role) já nos dá essa informação.
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      if (currentUser) {
-        const userDocRef = doc(db, 'users', currentUser.uid);
-        const userDocSnap = await getDoc(userDocRef);
-        let finalUser = { ...currentUser };
-        if (userDocSnap.exists()) {
-          const userData = userDocSnap.data();
-          setUserRole(userData.role || 'patient');
-          finalUser = { ...finalUser, ...userData };
-        } else {
-          setUserRole('patient');
-        }
-        setUser(finalUser);
-      } else {
-        setUser(null);
-        setUserRole(null);
-      }
-      setIsLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  const handleLogout = () => {
-    auth.signOut();
-  };
-
-  if (isLoading) {
-    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Carregando...</div>;
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        Carregando...
+      </div>
+    );
   }
 
   return (
     <BrowserRouter>
       <Routes>
-        {/* Rotas para quando o usuário NÃO está logado */}
+        {/* ROTAS PÚBLICAS */}
         {!user ? (
           <>
             <Route path="/register/:role" element={<RegisterPage />} />
@@ -84,28 +56,92 @@ function App() {
             <Route path="*" element={<Navigate to="/select-role" />} />
           </>
         ) : (
-          // Rotas para quando o usuário ESTÁ logado
           <>
-            {userRole === 'therapist' ? (
-              // Rotas do Terapeuta
-              <>
-                <Route path="/dashboard" element={<MainLayout user={user} userRole={userRole} onLogout={handleLogout}><TherapistDashboardPage user={user} /></MainLayout>} />
-                <Route path="/playlists" element={<MainLayout user={user} userRole={userRole} onLogout={handleLogout}><TherapistPlaylistsPage user={user} /></MainLayout>} />
-                <Route path="/perfil" element={<MainLayout user={user} userRole={userRole} onLogout={handleLogout}><ProfilePage user={user} /></MainLayout>} />
-                <Route path="/sessao/:patientId" element={<MainLayout user={user} userRole={userRole} onLogout={handleLogout}><SessionPage /></MainLayout>} />
-                <Route path="*" element={<Navigate to="/dashboard" />} />
-              </>
-            ) : (
-              // Rotas do Paciente
-              <>
-                <Route path="/inicio" element={<MainLayout user={user} userRole={userRole} onLogout={handleLogout}><HomePage user={user} /></MainLayout>} />
-                <Route path="/agendamentos" element={<MainLayout user={user} userRole={userRole} onLogout={handleLogout}><AgendamentosPage user={user} /></MainLayout>} />
-                <Route path="/playlists" element={<MainLayout user={user} userRole={userRole} onLogout={handleLogout}><PlaylistsPage user={user} /></MainLayout>} />
-                <Route path="/historico" element={<MainLayout user={user} userRole={userRole} onLogout={handleLogout}><HistoricoPage user={user} /></MainLayout>} />
-                <Route path="/perfil" element={<MainLayout user={user} userRole={userRole} onLogout={handleLogout}><ProfilePage user={user} /></MainLayout>} />
-                <Route path="*" element={<Navigate to="/inicio" />} />
-              </>
-            )}
+            {/* ROTAS TERAPEUTA */}
+            <Route
+              path="/dashboard"
+              element={
+                <RequireRole userRole={userRole} requiredRole="therapist" redirectTo="/inicio">
+                  <MainLayout user={user} userRole={userRole} onLogout={logout}>
+                    <TherapistDashboardPage user={user} />
+                  </MainLayout>
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/playlists"
+              element={
+                userRole === 'therapist' ? (
+                  <RequireRole userRole={userRole} requiredRole="therapist" redirectTo="/inicio">
+                    <MainLayout user={user} userRole={userRole} onLogout={logout}>
+                      <TherapistPlaylistsPage user={user} />
+                    </MainLayout>
+                  </RequireRole>
+                ) : (
+                  <RequireRole userRole={userRole} requiredRole="patient" redirectTo="/dashboard">
+                    <MainLayout user={user} userRole={userRole} onLogout={logout}>
+                      <PlaylistsPage user={user} />
+                    </MainLayout>
+                  </RequireRole>
+                )
+              }
+            />
+            <Route
+              path="/perfil"
+              element={
+                <MainLayout user={user} userRole={userRole} onLogout={logout}>
+                  <ProfilePage user={user} />
+                </MainLayout>
+              }
+            />
+            <Route
+              path="/sessao/:patientId"
+              element={
+                <RequireRole userRole={userRole} requiredRole="therapist" redirectTo="/inicio">
+                  <MainLayout user={user} userRole={userRole} onLogout={logout}>
+                    <SessionPage />
+                  </MainLayout>
+                </RequireRole>
+              }
+            />
+
+            {/* ROTAS PACIENTE */}
+            <Route
+              path="/inicio"
+              element={
+                <RequireRole userRole={userRole} requiredRole="patient" redirectTo="/dashboard">
+                  <MainLayout user={user} userRole={userRole} onLogout={logout}>
+                    <HomePage user={user} />
+                  </MainLayout>
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/agendamentos"
+              element={
+                <RequireRole userRole={userRole} requiredRole="patient" redirectTo="/dashboard">
+                  <MainLayout user={user} userRole={userRole} onLogout={logout}>
+                    <AgendamentosPage user={user} />
+                  </MainLayout>
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/historico"
+              element={
+                <RequireRole userRole={userRole} requiredRole="patient" redirectTo="/dashboard">
+                  <MainLayout user={user} userRole={userRole} onLogout={logout}>
+                    <HistoricoPage user={user} />
+                  </MainLayout>
+                </RequireRole>
+              }
+            />
+
+            {/* WILDCARD: manda para a home correta */}
+            <Route
+              path="*"
+              element={<Navigate to={userRole === 'therapist' ? '/dashboard' : '/inicio'} replace />}
+            />
           </>
         )}
       </Routes>
