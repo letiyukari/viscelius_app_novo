@@ -22,9 +22,14 @@ const AddPatientModal = ({ isOpen, onClose, therapistId, setNotification }) => {
                 createdAt: serverTimestamp()
             });
             
-            // MUDANÇA PRINCIPAL AQUI
             setNotification({ message: 'Paciente criado com sucesso!', type: 'success' });
-            onClose();
+            
+            // NOVO: Limpa os campos do formulário após o sucesso
+            setName('');
+            setAge('');
+            setGoals('');
+
+            onClose(); // Fecha o modal
             
         } catch (error) {
             console.error("Erro ao criar perfil do paciente:", error);
@@ -34,6 +39,7 @@ const AddPatientModal = ({ isOpen, onClose, therapistId, setNotification }) => {
 
     if (!isOpen) { return null; }
     
+    // ... (o restante do seu código de styles continua exatamente igual) ...
     const styles = {
         overlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
         modal: { backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '16px', width: '90%', maxWidth: '500px', boxShadow: '0 10px 30px rgba(0,0,0,0.1)' },

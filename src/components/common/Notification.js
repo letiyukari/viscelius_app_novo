@@ -13,14 +13,14 @@ const Notification = ({ message, type, onDone }) => {
 
             return () => clearTimeout(timer);
         }
-    }, [message, onDone]);
+    }, [message]); // A animação depende apenas da mensagem
 
     const styles = {
         container: {
             position: 'fixed',
             top: '20px',
             right: '20px',
-            zIndex: 2000,
+            zIndex: 9999, // AUMENTAMOS MUITO O Z-INDEX PARA GARANTIR
             backgroundColor: type === 'success' ? '#4CAF50' : '#f44336',
             color: 'white',
             padding: '16px',
