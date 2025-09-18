@@ -1,3 +1,4 @@
+// src/App.js
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 
@@ -15,6 +16,7 @@ import ProfilePage from './screens/patient/ProfilePage';
 import TherapistDashboardPage from './screens/therapist/DashboardPage';
 import TherapistPlaylistsPage from './screens/therapist/PlaylistsPage';
 import SessionPage from './screens/therapist/SessionPage';
+import AgendaConfigPage from './screens/therapist/AgendaConfigPage'; // <<< NOVO
 
 import RequireRole from './routes/RequireRole';
 import { useAuth } from './context/AuthContext';
@@ -87,19 +89,22 @@ function App() {
               }
             />
             <Route
-              path="/perfil"
-              element={
-                <MainLayout user={user} userRole={userRole} onLogout={logout}>
-                  <ProfilePage user={user} />
-                </MainLayout>
-              }
-            />
-            <Route
               path="/sessao/:patientId"
               element={
                 <RequireRole userRole={userRole} requiredRole="therapist" redirectTo="/inicio">
                   <MainLayout user={user} userRole={userRole} onLogout={logout}>
                     <SessionPage />
+                  </MainLayout>
+                </RequireRole>
+              }
+            />
+            {/* NOVO: configurar agenda do terapeuta */}
+            <Route
+              path="/agenda"
+              element={
+                <RequireRole userRole={userRole} requiredRole="therapist" redirectTo="/inicio">
+                  <MainLayout user={user} userRole={userRole} onLogout={logout}>
+                    <AgendaConfigPage />
                   </MainLayout>
                 </RequireRole>
               }

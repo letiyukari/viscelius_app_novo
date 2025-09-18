@@ -1,205 +1,511 @@
-import React, { useState, useEffect } from 'react';
-import { db } from '../../firebase';
-import { collection, addDoc, onSnapshot, query, where, doc, deleteDoc } from 'firebase/firestore';
-import { ClockIcon, VideoIcon } from '../../common/Icons';
+// src/screens/patient/AgendamentosPage.js
+import React, { useEffect, useMemo, useState } from "react";
+import { db } from "../../firebase";
+import { collectionGroup, getDocs, getDoc, doc } from "firebase/firestore";
+import Icons from "../../components/common/Icons";
+import {
+  listOpenSlotsByTherapist,
+  requestAppointment,
+  subscribePatientAppointments,
+  cancelAppointment,
+} from "../../services/agenda";
 
-const AgendamentosPage = ({ user }) => {
-    const therapists = [
-      { id: "carlos-mendes", name: "Dr. Carlos Mendes", specialty: "Foco e Ansiedade", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=1374&auto=format&fit=crop" },
-      { id: "sofia-ribeiro", name: "Dra. Sofia Ribeiro", specialty: "Expressão Emocional", avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=2070&auto=format&fit=crop" },
-      { id: "ricardo-alves", name: "Dr. Ricardo Alves", specialty: "Reabilitação Motora", avatar: "https://images.unsplash.com/photo-1568602471122-7832951cc4c5?q=80&w=2070&auto=format&fit=crop" },
-    ];
-  
-    const availableSchedule = {
-        "Seg, 22 Jul": ["14:00", "15:00"],
-        "Ter, 23 Jul": ["11:00", "13:00", "16:00"],
-        "Qua, 24 Jul": ["10:00", "11:00"],
-        "Qui, 25 Jul": [],
-        "Sex, 26 Jul": ["08:00", "15:00", "16:00", "17:00"],
-    };
-  
-    const [selectedTherapist, setSelectedTherapist] = useState(therapists[0]);
-    const [selectedDate, setSelectedDate] = useState(Object.keys(availableSchedule)[0]);
-    const [selectedSlot, setSelectedSlot] = useState(null);
-    const [userAppointments, setUserAppointments] = useState([]);
-    const [message, setMessage] = useState({ type: '', text: '' });
-  
-    const workHours = Array.from({ length: 11 }, (_, i) => `${String(i + 8).padStart(2, '0')}:00`);
-  
-    const handleConfirmBooking = async () => {
-      setMessage({ type: '', text: '' });
-      if (!user) {
-          setMessage({ type: 'error', text: 'Você precisa estar logado para agendar uma consulta.' });
-          return;
-      }
-      if (!selectedTherapist || !selectedDate || !selectedSlot) {
-          setMessage({ type: 'error', text: 'Por favor, selecione um terapeuta, data e horário.' });
-          return;
-      }
-  
-      try {
-          await addDoc(collection(db, 'appointments'), {
-              userId: user.uid,
-              userEmail: user.email,
-              therapistId: selectedTherapist.id,
-              therapistName: selectedTherapist.name,
-              date: selectedDate,
-              time: selectedSlot,
-              status: 'Agendada',
-              createdAt: new Date(),
-          });
-          setMessage({ type: 'success', text: 'Consulta agendada com sucesso!' });
-          setSelectedSlot(null);
-      } catch (e) {
-          setMessage({ type: 'error', text: 'Erro ao agendar consulta. Tente novamente.' });
-          console.error("Erro ao agendar consulta: ", e);
-      }
-    };
-  
-    const handleDeleteAppointment = async (appointmentId) => {
-      setMessage({ type: '', text: '' });
-      if (!user) {
-          setMessage({ type: 'error', text: 'Você precisa estar logado para cancelar uma consulta.' });
-          return;
-      }
-      try {
-          await deleteDoc(doc(db, 'appointments', appointmentId));
-          setMessage({ type: 'success', text: 'Agendamento cancelado com sucesso!' });
-      } catch (e) {
-          setMessage({ type: 'error', text: 'Erro ao cancelar agendamento. Tente novamente.' });
-          console.error("Erro ao cancelar agendamento: ", e);
-      }
-    };
-  
-    useEffect(() => {
-      if (!user) {
-          setUserAppointments([]);
-          return;
-      }
-  
-      const q = query(
-          collection(db, 'appointments'),
-          where('userId', '==', user.uid)
-      );
-  
-      const unsubscribe = onSnapshot(q, (querySnapshot) => {
-          const fetchedAppointments = [];
-          querySnapshot.forEach((doc) => {
-              fetchedAppointments.push({ id: doc.id, ...doc.data() });
-          });
-          setUserAppointments(fetchedAppointments);
-      }, (error) => {
-          console.error("Erro ao carregar agendamentos:", error);
-      });
-      return () => unsubscribe();
-    }, [user]);
-  
-    const styles = {
-        pageContainer: { padding: '2rem 3.5rem', backgroundColor: '#F9FAFB', fontFamily: '"Inter", sans-serif', overflowY: 'auto', height: '100vh' },
-        header: { marginBottom: '2rem' },
-        title: { color: '#1F2937', fontSize: '2.2rem', fontWeight: '700', margin: '0' },
-        subtitle: { color: '#6B7280', fontSize: '1.1rem', fontWeight: '500', marginTop: '0.5rem' },
-        mainContent: { display: 'grid', gridTemplateColumns: '350px 1fr', gap: '2.5rem', alignItems: 'flex-start' },
-        therapistList: { display: 'flex', flexDirection: 'column', gap: '1rem' },
-        therapistCard: { display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem', borderRadius: '12px', cursor: 'pointer', border: '2px solid #fff', transition: 'border-color 0.2s, background-color 0.2s' },
-        therapistCardSelected: { borderColor: '#8B5CF6', backgroundColor: '#F5F3FF' },
-        therapistAvatar: { width: '50px', height: '50px', borderRadius: '50%', objectFit: 'cover' },
-        therapistInfo: {},
-        therapistName: { margin: 0, color: '#1F2937', fontWeight: 600 },
-        therapistSpecialty: { margin: 0, color: '#6B7280', fontSize: '0.9rem' },
-        scheduleContainer: { backgroundColor: '#fff', border: '1px solid #E5E7EB', borderRadius: '16px', overflow: 'hidden' },
-        dateNavigator: { display: 'flex', borderBottom: '1px solid #E5E7EB' },
-        dateButton: { flex: 1, padding: '1rem', border: 'none', background: 'none', cursor: 'pointer', color: '#6B7280', fontWeight: 500, transition: 'background-color 0.2s, color 0.2s' },
-        dateButtonSelected: { backgroundColor: '#F5F3FF', color: '#6D28D9', boxShadow: 'inset 0 -2px 0 #6D28D9' },
-        slotsAndCalendarContainer: { padding: '1.5rem' },
-        slotsGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '1rem' },
-        slotButton: { padding: '0.75rem', border: '1px solid #D1D5DB', borderRadius: '8px', background: 'none', cursor: 'pointer', color: '#374151', fontWeight: 600, transition: 'background-color 0.2s, color 0.2s' },
-        slotButtonSelected: { backgroundColor: '#6D28D9', color: '#fff', borderColor: '#6D28D9' },
-        sessionInfo: { display: 'flex', gap: '1rem', color: '#6B7280', marginTop: '1.5rem', alignItems: 'center', paddingBottom: '1.5rem', borderBottom: '1px solid #E5E7EB' },
-        infoItem: { display: 'flex', alignItems: 'center', gap: '0.5rem' },
-        bookingAction: { marginTop: '2rem', textAlign: 'right' },
-        bookingButton: { backgroundColor: '#8B5CF6', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '12px', cursor: 'pointer', fontWeight: '600', fontSize: '1rem', transition: 'background-color 0.2s' },
-        userAppointmentsList: { marginTop: '3rem' },
-        userAppointmentCard: { backgroundColor: '#fff', padding: '1rem', borderRadius: '12px', border: '1px solid #E5E7EB', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
-        cancelButton: { backgroundColor: '#EF4444', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' },
-    };
+/* -------------------- helpers -------------------- */
+const fmtDT = (iso) => new Date(iso).toLocaleString();
+const fmtTime = (iso) =>
+  new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const ymd = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate()
+  ).padStart(2, "0")}`;
+const rangeDays = (n = 30) => {
+  const out = [];
+  const base = new Date();
+  for (let i = 0; i < n; i++) {
+    const d = new Date(base);
+    d.setDate(d.getDate() + i);
+    out.push(d);
+  }
+  return out;
+};
 
-    const currentBookedSlots = userAppointments.filter(app => app.therapistId === selectedTherapist.id && app.date === selectedDate);
-    const availableSlotsForDisplay = availableSchedule[selectedDate] ? availableSchedule[selectedDate].filter(
-        slot => !currentBookedSlots.some(booked => booked.time === slot)
-    ) : [];
-  
-    return (
-      <div style={styles.pageContainer}>
-        <header style={styles.header}>
-          <h1 style={styles.title}>Agendar Sessão</h1>
-          <p style={styles.subtitle}>Encontre o melhor horário para sua próxima consulta.</p>
-        </header>
-        <div style={styles.mainContent}>
-            <div>
-                <h2 style={{ fontSize: '1.2rem', fontWeight: 600, color: '#1F2937', marginBottom: '1rem' }}>Nossos Terapeutas</h2>
-                <div style={styles.therapistList}>
-                    {therapists.map(therapist => (
-                        <div key={therapist.id} style={{ ...styles.therapistCard, ...(selectedTherapist.id === therapist.id && styles.therapistCardSelected) }} onClick={() => { setSelectedTherapist(therapist); setSelectedSlot(null); }}>
-                            <img src={therapist.avatar} alt={therapist.name} style={styles.therapistAvatar} />
-                            <div style={styles.therapistInfo}>
-                                <p style={styles.therapistName}>{therapist.name}</p>
-                                <p style={styles.therapistSpecialty}>{therapist.specialty}</p>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-            <div style={styles.scheduleContainer}>
-                <div style={styles.dateNavigator}>
-                {Object.keys(availableSchedule).map(day => (
-                    <button key={day} style={{ ...styles.dateButton, ...(selectedDate === day && styles.dateButtonSelected) }} onClick={() => { setSelectedDate(day); setSelectedSlot(null); }}>
-                    {day}
-                    </button>
-                ))}
-                </div>
-                <div style={styles.slotsAndCalendarContainer}>
-                    <div>
-                        <p style={{ fontWeight: 600, color: '#374151' }}>Horários disponíveis para {selectedDate}:</p>
-                        <div style={styles.slotsGrid}>
-                        {availableSlotsForDisplay.length > 0 ? availableSlotsForDisplay.map(time => (
-                            <button key={time} style={{...styles.slotButton, ...(selectedSlot === time && styles.slotButtonSelected)}} onClick={() => setSelectedSlot(time)}>
-                            {time}
-                            </button>
-                        )) : <p style={{color: '#6B7280'}}>Nenhum horário disponível para este dia.</p>}
-                        </div>
-                    </div>
-                    <div style={styles.sessionInfo}>
-                        <div style={styles.infoItem}><ClockIcon/> <span>Duração: 50 min</span></div>
-                        <div style={styles.infoItem}><VideoIcon/> <span>Modalidade: Online</span></div>
-                    </div>
-                    {selectedSlot && (
-                      <div style={styles.bookingAction}>
-                          <button onClick={handleConfirmBooking} style={styles.bookingButton}>Confirmar Agendamento</button>
-                      </div>
-                    )}
-                </div>
-            </div>
-        </div>
-        <div style={styles.userAppointmentsList}>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: '600', color: '#1F2937', marginBottom: '1.5rem' }}>Meus Agendamentos Confirmados</h2>
-          {userAppointments.length > 0 ? (
-              userAppointments.map(appointment => (
-                  <div key={appointment.id} style={styles.userAppointmentCard}>
-                      <div>
-                          <p style={{ margin: 0, fontWeight: 600 }}>{appointment.therapistName}</p>
-                          <p style={{ margin: '4px 0 0 0', fontSize: '0.9rem', color: '#6B7280' }}>{appointment.date} às {appointment.time}</p>
-                          <p style={{ margin: '4px 0 0 0', fontSize: '0.9rem', color: '#2E7D32', fontWeight: 500 }}>Status: {appointment.status}</p>
-                      </div>
-                      <button onClick={() => handleDeleteAppointment(appointment.id)} style={styles.cancelButton}>Cancelar</button>
-                  </div>
-              ))
+/* -------------------- ui styles -------------------- */
+const token = {
+  bg: "#F9FAFB",
+  panel: "#FFFFFF",
+  border: "#E5E7EB",
+  text: "#111827",
+  sub: "#6B7280",
+  brand: "#7C3AED",
+  brandSoft: "#F5F3FF",
+  success: "#065F46",
+  warn: "#92400E",
+  info: "#1D4ED8",
+  danger: "#EF4444",
+};
+
+const styles = {
+  page: {
+    padding: "28px 36px",
+    background: token.bg,
+    minHeight: "100vh",
+    fontFamily: "Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial",
+  },
+  h1: { margin: 0, fontSize: 28, fontWeight: 800, color: token.text },
+  sub: { margin: "8px 0 24px", color: token.sub },
+
+  layout: { display: "grid", gridTemplateColumns: "340px 1fr", gap: 24 },
+
+  // left
+  tList: { display: "flex", flexDirection: "column", gap: 12 },
+  tCard: {
+    border: `1px solid ${token.border}`,
+    borderRadius: 16,
+    background: token.panel,
+    padding: 14,
+    display: "flex",
+    gap: 12,
+    alignItems: "center",
+    cursor: "pointer",
+    transition: "border-color .2s, box-shadow .2s",
+  },
+  tCardSel: { borderColor: token.brand, boxShadow: "0 0 0 4px " + token.brandSoft },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    background: "#E5E7EB",
+    objectFit: "cover",
+    flex: "0 0 48px",
+  },
+  tName: { margin: 0, fontWeight: 700, color: token.text },
+  tSpec: { margin: 0, color: token.sub, fontSize: 13 },
+
+  // right
+  panel: {
+    border: `1px solid ${token.border}`,
+    borderRadius: 16,
+    background: token.panel,
+    overflow: "hidden",
+  },
+
+  // header w/ week nav
+  weekHeader: {
+    padding: "12px 12px 8px",
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    borderBottom: `1px solid ${token.border}`,
+    flexWrap: "wrap",
+  },
+  navBtn: {
+    border: `1px solid ${token.border}`,
+    background: token.panel,
+    borderRadius: 10,
+    padding: "8px 12px",
+    cursor: "pointer",
+  },
+  pills: { display: "flex", gap: 8, flexWrap: "wrap" },
+  pill: (active) => ({
+    border: "none",
+    borderRadius: 999,
+    padding: "8px 12px",
+    cursor: "pointer",
+    background: active ? token.brandSoft : "#fff",
+    color: active ? token.brand : token.sub,
+    fontWeight: 700,
+    boxShadow: active ? "inset 0 0 0 1px " + token.brand : `inset 0 0 0 1px ${token.border}`,
+  }),
+
+  metaRow: {
+    display: "flex",
+    gap: 16,
+    color: token.sub,
+    padding: "12px 16px",
+    borderBottom: `1px solid ${token.border}`,
+    alignItems: "center",
+  },
+
+  slots: { display: "grid", gap: 12, padding: 16 },
+  slotCard: {
+    border: `1px solid ${token.border}`,
+    borderRadius: 14,
+    padding: 14,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  left: { display: "flex", flexDirection: "column", gap: 4 },
+  time: { fontWeight: 800 },
+  line: { fontSize: 13, color: token.text },
+
+  badge: (type) => ({
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    fontSize: 12,
+    fontWeight: 800,
+    padding: "4px 8px",
+    borderRadius: 999,
+    color:
+      type === "OPEN" ? token.success : type === "HELD" ? token.warn : type === "BOOKED" ? token.info : token.text,
+    background:
+      type === "OPEN"
+        ? "#ECFDF5"
+        : type === "HELD"
+        ? "#FFF7ED"
+        : type === "BOOKED"
+        ? "#EFF6FF"
+        : token.brandSoft,
+    border:
+      type === "OPEN"
+        ? "1px solid #A7F3D0"
+        : type === "HELD"
+        ? "1px solid #FED7AA"
+        : type === "BOOKED"
+        ? "1px solid #BFDBFE"
+        : "1px solid " + token.brand,
+  }),
+
+  primary: (disabled) => ({
+    background: disabled ? "#C7D2FE" : token.brand,
+    color: "#fff",
+    border: "none",
+    padding: "10px 14px",
+    borderRadius: 12,
+    cursor: disabled ? "not-allowed" : "pointer",
+    fontWeight: 800,
+    minWidth: 120,
+  }),
+  danger: {
+    background: token.danger,
+    color: "#fff",
+    border: "none",
+    padding: "10px 14px",
+    borderRadius: 12,
+    cursor: "pointer",
+    fontWeight: 800,
+    minWidth: 120,
+  },
+
+  mySection: { padding: 16, borderTop: `1px solid ${token.border}` },
+  myTitle: { fontSize: 16, fontWeight: 800, margin: "0 0 10px" },
+  myList: { display: "grid", gap: 10 },
+  myItem: {
+    border: `1px solid ${token.border}`,
+    borderRadius: 14,
+    background: token.panel,
+    padding: 12,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+};
+
+/* -------------------- component -------------------- */
+export default function AgendamentosPage({ user }) {
+  const patientId = user?.uid || user?.id || user?.userId || null;
+
+  // terapeutas
+  const [therapists, setTherapists] = useState([]);
+  const [tLoading, setTLoading] = useState(true);
+  const [selected, setSelected] = useState(null);
+
+  // datas (30 dias) com paginação por semana
+  const days = useMemo(() => rangeDays(30), []);
+  const pageSize = 7;
+  const [weekIndex, setWeekIndex] = useState(0);
+  const pagedDays = useMemo(
+    () => days.slice(weekIndex * pageSize, weekIndex * pageSize + pageSize),
+    [days, weekIndex]
+  );
+  const [activeDay, setActiveDay] = useState(ymd(days[0]));
+
+  // slots e pedidos
+  const [slots, setSlots] = useState([]);
+  const [sLoading, setSLoading] = useState(false);
+  const [requestingSlotId, setRequestingSlotId] = useState(null);
+  const [error, setError] = useState("");
+
+  // meus agendamentos
+  const [myAppts, setMyAppts] = useState([]);
+  const [cancelingId, setCancelingId] = useState(null);
+
+  /* ---- terapeutas que possuem slots ---- */
+  useEffect(() => {
+    async function fetchTherapists() {
+      try {
+        setTLoading(true);
+        const cg = await getDocs(collectionGroup(db, "slots"));
+        const ids = new Set();
+        cg.forEach((d) => {
+          const data = d.data();
+          if (["OPEN", "HELD"].includes(data.status)) {
+            const parts = d.ref.path.split("/");
+            const tid = parts[1];
+            if (tid) ids.add(tid);
+          }
+        });
+
+        const list = [];
+        for (const tid of Array.from(ids)) {
+          let name = "Terapeuta";
+          let specialty = "Musicoterapia";
+          let photoURL = "";
+          try {
+            const u = await getDoc(doc(db, "users", tid));
+            if (u.exists()) {
+              const ud = u.data();
+              name = ud.name || name;
+              specialty = ud.specialty || specialty;
+              photoURL = ud.photoURL || "";
+            }
+          } catch {}
+          list.push({ id: tid, name, specialty, photoURL });
+        }
+        list.sort((a, b) => a.name.localeCompare(b.name));
+        setTherapists(list);
+        if (list.length) setSelected(list[0]);
+      } finally {
+        setTLoading(false);
+      }
+    }
+    fetchTherapists();
+  }, []);
+
+  /* ---- slots do terapeuta selecionado ---- */
+  useEffect(() => {
+    async function load() {
+      if (!selected?.id) return;
+      setSLoading(true);
+      setError("");
+      try {
+        const list = await listOpenSlotsByTherapist(selected.id);
+        list.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+        setSlots(list);
+      } catch (e) {
+        console.error(e);
+        setError("Não foi possível carregar os horários deste terapeuta.");
+      } finally {
+        setSLoading(false);
+      }
+    }
+    load();
+  }, [selected]);
+
+  /* ---- assina meus agendamentos ---- */
+  useEffect(() => {
+    if (!patientId) return;
+    const unsub = subscribePatientAppointments(patientId, (appts) => setMyAppts(appts));
+    return () => unsub && unsub();
+  }, [patientId]);
+
+  // map de appointment por slotId (para saber se já solicitei)
+  const apptBySlot = useMemo(() => {
+    const map = {};
+    for (const a of myAppts) {
+      const parts = (a.slotPath || "").split("/");
+      const slotId = parts[3];
+      if (slotId) map[slotId] = a;
+    }
+    return map;
+  }, [myAppts]);
+
+  // slots por dia
+  const slotsByDay = useMemo(() => {
+    const m = {};
+    for (const s of slots) {
+      const key = ymd(new Date(s.startsAt));
+      (m[key] ||= []).push(s);
+    }
+    Object.values(m).forEach((arr) => arr.sort((a, b) => a.startsAt.localeCompare(b.startsAt)));
+    return m;
+  }, [slots]);
+
+  /* -------------------- actions -------------------- */
+  async function onRequest(slot) {
+    if (!patientId || !selected?.id) return;
+    try {
+      setRequestingSlotId(slot.id);
+      setError("");
+      await requestAppointment({ patientId, therapistId: selected.id, slotId: slot.id });
+    } catch (e) {
+      console.error(e);
+      setError(e?.message || "Não foi possível solicitar este horário.");
+    } finally {
+      setRequestingSlotId(null);
+    }
+  }
+
+  async function onCancel(apptId) {
+    try {
+      setCancelingId(apptId);
+      await cancelAppointment(apptId);
+    } catch (e) {
+      console.error(e);
+      setError(e?.message || "Não foi possível cancelar.");
+    } finally {
+      setCancelingId(null);
+    }
+  }
+
+  /* -------------------- render -------------------- */
+  return (
+    <div style={styles.page}>
+      <h1 style={styles.h1}>Agendar Sessão</h1>
+      <p style={styles.sub}>Encontre o melhor horário para sua próxima consulta.</p>
+
+      <div style={styles.layout}>
+        {/* LEFT – Terapeutas */}
+        <div>
+          <h3 style={{ margin: "0 0 10px", fontWeight: 800, color: token.text }}>Nossos Terapeutas</h3>
+          {tLoading ? (
+            <div style={{ color: token.sub }}>Carregando...</div>
+          ) : therapists.length === 0 ? (
+            <div style={{ color: token.sub }}>Nenhum terapeuta encontrado.</div>
           ) : (
-              <p style={{ color: '#6B7280' }}>Você não tem agendamentos futuros.</p>
+            <div style={styles.tList}>
+              {therapists.map((t) => {
+                const sel = selected?.id === t.id;
+                return (
+                  <div
+                    key={t.id}
+                    onClick={() => setSelected(t)}
+                    style={{ ...styles.tCard, ...(sel ? styles.tCardSel : {}) }}
+                  >
+                    {t.photoURL ? <img src={t.photoURL} alt="" style={styles.avatar} /> : <div style={styles.avatar} />}
+                    <div>
+                      <p style={styles.tName}>{t.name}</p>
+                      <p style={styles.tSpec}>{t.specialty}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
+
+        {/* RIGHT – Agenda */}
+        <div style={styles.panel}>
+          {/* header com paginação semanal */}
+          <div style={styles.weekHeader}>
+            <button
+              style={styles.navBtn}
+              disabled={weekIndex === 0}
+              onClick={() => setWeekIndex((i) => Math.max(0, i - 1))}
+            >
+              ←
+            </button>
+            <div style={styles.pills}>
+              {pagedDays.map((d) => {
+                const key = ymd(d);
+                const active = key === activeDay;
+                const label = d.toLocaleDateString([], {
+                  weekday: "short",
+                  day: "2-digit",
+                  month: "short",
+                });
+                return (
+                  <button key={key} style={styles.pill(active)} onClick={() => setActiveDay(key)}>
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              style={styles.navBtn}
+              disabled={(weekIndex + 1) * pageSize >= days.length}
+              onClick={() =>
+                setWeekIndex((i) => ((i + 1) * pageSize >= days.length ? i : i + 1))
+              }
+            >
+              →
+            </button>
+          </div>
+
+          <div style={styles.metaRow}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              <Icons.ClockIcon /> Duração: 50 min
+            </span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              <Icons.VideoIcon /> Modalidade: Online
+            </span>
+            {error && <span style={{ color: token.danger, fontWeight: 700 }}>{error}</span>}
+          </div>
+
+          {/* slots */}
+          {sLoading ? (
+            <div style={{ padding: 16, color: token.sub }}>Carregando horários...</div>
+          ) : (slotsByDay[activeDay] || []).length === 0 ? (
+            <div style={{ padding: 16, color: token.sub }}>Nenhum horário disponível para este dia.</div>
+          ) : (
+            <div style={styles.slots}>
+              {(slotsByDay[activeDay] || []).map((s) => {
+                const appt = apptBySlot[s.id];
+                const myStatus = appt?.status; // PENDING/CONFIRMED...
+                const requesting = requestingSlotId === s.id;
+                const disabled = (s.status !== "OPEN" && !myStatus) || requesting;
+
+                return (
+                  <div key={s.id} style={styles.slotCard}>
+                    <div style={styles.left}>
+                      <div style={styles.time}>
+                        {fmtTime(s.startsAt)} — {fmtTime(s.endsAt)}
+                      </div>
+                      <div style={styles.line}>
+                        <span style={{ marginRight: 8, ...styles.badge(s.status) }}>{s.status}</span>
+                        {myStatus && (
+                          <span style={styles.badge("MEU")}>Sua solicitação: {myStatus}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {myStatus === "PENDING" ? (
+                      <button style={styles.danger} onClick={() => onCancel(appt.id)} disabled={cancelingId === appt.id}>
+                        {cancelingId === appt.id ? "Cancelando..." : "Cancelar"}
+                      </button>
+                    ) : (
+                      <button style={styles.primary(disabled)} onClick={() => onRequest(s)} disabled={disabled}>
+                        {requesting ? "Solicitando..." : myStatus ? "Solicitado" : "Solicitar"}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Meus agendamentos */}
+          <div style={styles.mySection}>
+            <h4 style={styles.myTitle}>Meus Agendamentos</h4>
+            {myAppts.length === 0 ? (
+              <div style={{ color: token.sub }}>Você ainda não possui solicitações.</div>
+            ) : (
+              <div style={styles.myList}>
+                {myAppts.map((a) => (
+                  <div key={a.id} style={styles.myItem}>
+                    <div>
+                      <div style={{ fontWeight: 800 }}>{fmtDT(a.slotStartsAt)} → {fmtDT(a.slotEndsAt)}</div>
+                      <div style={{ fontSize: 13 }}>
+                        Status: <span style={styles.badge(a.status)}>{a.status}</span>
+                      </div>
+                    </div>
+                    <button
+                      style={styles.danger}
+                      onClick={() => onCancel(a.id)}
+                      disabled={cancelingId === a.id}
+                    >
+                      {cancelingId === a.id ? "Cancelando..." : "Cancelar"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
-    );
-};
-  
-export default AgendamentosPage;
+    </div>
+  );
+}
