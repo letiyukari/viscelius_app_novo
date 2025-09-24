@@ -1,4 +1,4 @@
-// src/screens/auth/LoginPage.js
+﻿// src/screens/auth/LoginPage.js
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Icons from '../../components/common/Icons';
@@ -20,7 +20,7 @@ const LoginPage = () => {
       return;
     }
     try {
-      await loginWithEmail(email, password);
+      await loginWithEmail({ email, password, desiredRole: role });
       // redireciona via onAuthStateChanged no App.js
     } catch (error) {
       console.error('Erro no login por email:', error);
@@ -31,7 +31,7 @@ const LoginPage = () => {
   const handleGoogleSignIn = async () => {
     setMessage({ type: '', text: '' });
     try {
-      await loginWithGoogle(role);
+      await loginWithGoogle({ desiredRole: role });
       // redireciona via onAuthStateChanged no App.js
     } catch (error) {
       console.error('Erro no login com Google:', error);
