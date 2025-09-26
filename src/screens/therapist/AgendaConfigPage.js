@@ -1,6 +1,6 @@
 // src/screens/therapist/AgendaConfigPage.js
-// Página do TERAPEUTA para publicar/gerenciar disponibilidade (slots)
-// Inclui aprovação/recusa de solicitações (HELD) e exclusão de slots OPEN.
+// Pagina do TERAPEUTA para publicar/gerenciar disponibilidade (slots)
+// Inclui aprovacao/recusa de solicitacoes (HELD) e exclusao de slots OPEN.
 
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -12,6 +12,7 @@ import {
   subscribeTherapistAppointments,
 } from "../../services/agenda";
 import { useAuth } from "../../context/AuthContext";
+import { getMultipleUserProfiles } from "../../services/usersService";
 
 // ===== helpers de data =====
 function pad(v, n = 2) {
@@ -95,10 +96,10 @@ const styles = {
 };
 
 export default function AgendaConfigPage() {
-  const { user } = useAuth(); // já usado no seu app
+  const { user } = useAuth(); // ja usado no seu app
   const therapistId = user?.uid || user?.id;
 
-  // formulário
+  // formulario
   const [date, setDate] = useState(toLocalInputDate(new Date()));
   const [start, setStart] = useState("11:00");
   const [end, setEnd] = useState("12:50");
@@ -107,16 +108,42 @@ export default function AgendaConfigPage() {
   // dados
   const [slots, setSlots] = useState([]);
   const [loadingPublish, setLoadingPublish] = useState(false);
-  const [working, setWorking] = useState(null); // id em operação
+  const [working, setWorking] = useState(null); // id em operacao
 
-  // solicitações/appts do terapeuta
+  // solicitacoes/appts do terapeuta
   const [apps, setApps] = useState([]);
+  const [profiles, setProfiles] = useState({});
+  const [actionState, setActionState] = useState({});
 
   useEffect(() => {
     if (!therapistId) return;
     const unsub = subscribeSlots(therapistId, (data) => setSlots(data));
     return () => unsub && unsub();
   }, [therapistId]);
+
+  useEffect(() => {
+    const ids = new Set();
+    apps.forEach((appt) => {
+      if (appt?.patientId) ids.add(appt.patientId);
+      if (appt?.therapistId) ids.add(appt.therapistId);
+    });
+    slots.forEach((slot) => {
+      if (slot?.requestedBy) ids.add(slot.requestedBy);
+    });
+    if (therapistId) ids.add(therapistId);
+    if (!ids.size) return undefined;
+
+    let active = true;
+    getMultipleUserProfiles(Array.from(ids))
+      .then((map) => {
+        if (active) setProfiles((prev) => ({ ...prev, ...map }));
+      })
+      .catch((error) => console.error(error));
+
+    return () => {
+      active = false;
+    };
+  }, [apps, slots, therapistId]);
 
   useEffect(() => {
     if (!therapistId) return;
@@ -126,6 +153,14 @@ export default function AgendaConfigPage() {
 
   const pending = useMemo(() => apps.filter((a) => a.status === "PENDING"), [apps]);
   const confirmed = useMemo(() => apps.filter((a) => a.status === "CONFIRMED"), [apps]);
+
+  const fallbackName = "Usuario";
+  const getDisplayName = (uid) => {
+    if (!uid) return fallbackName;
+    const profile = profiles[uid];
+    const name = (profile?.displayName || profile?.name || "").trim();
+    return name || fallbackName;
+  };
 
   async function handlePublish() {
     try {
@@ -146,51 +181,69 @@ export default function AgendaConfigPage() {
       setWorking(slotId);
       await deleteSlot(therapistId, slotId);
     } catch (err) {
-      alert(err?.message || "Não foi possível excluir o horário");
+      alert(err?.message || "Nao foi possivel excluir o horario");
     } finally {
       setWorking(null);
     }
   }
 
-  async function handleApprove(apptId) {
-    try {
-      setWorking(apptId);
-      await approveAppointment(apptId);
-    } catch (err) {
-      alert(err?.message || "Não foi possível confirmar o agendamento");
-    } finally {
-      setWorking(null);
-    }
+  function updateActionState(apptId, nextState) {
+    setActionState((prev) => ({
+      ...prev,
+      [apptId]: { ...(prev[apptId] || {}), ...nextState },
+    }));
   }
 
-  async function handleDecline(apptId) {
-    try {
-      setWorking(apptId);
-      await declineAppointment(apptId);
-    } catch (err) {
-      alert(err?.message || "Não foi possível recusar a solicitação");
-    } finally {
-      setWorking(null);
-    }
+  function applyOptimisticStatus(apptId, nextStatus, action) {
+    let previous = null;
+    setApps((prev) =>
+      prev.map((appt) => {
+        if (appt.id === apptId) {
+          previous = appt;
+          return { ...appt, status: nextStatus };
+        }
+        return appt;
+      })
+    );
+
+    updateActionState(apptId, { loading: true, error: false, status: nextStatus });
+
+    action()
+      .then(() => {
+        updateActionState(apptId, { loading: false, status: nextStatus });
+      })
+      .catch((error) => {
+        setApps((prev) =>
+          prev.map((appt) => (appt.id === apptId && previous ? previous : appt))
+        );
+        updateActionState(apptId, { loading: false, error: true });
+        alert(error?.message || "Não foi possível concluir a ação. Tente novamente.");
+      });
   }
+
+  const handleApprove = (apptId) =>
+    applyOptimisticStatus(apptId, "CONFIRMED", () => approveAppointment(apptId));
+
+  const handleDecline = (apptId) =>
+    applyOptimisticStatus(apptId, "DECLINED", () => declineAppointment(apptId));
 
   return (
     <div style={styles.page}>
       <h1 style={styles.title}>Configurar Agenda</h1>
       <p style={styles.subtitle}>
-        Publique seus horários disponíveis. Gerencie solicitações dos pacientes e confirme ou recuse.
+        Publique seus horarios disponiveis. Gerencie solicitacoes dos pacientes e confirme ou recuse.
       </p>
 
-      {/* Formulário de publicação */}
-      <div style={{ ...styles.card, marginTop: 12 }}>
-        <h3 style={{ marginTop: 0 }}>Novo horário disponível</h3>
+      {/* Formulario de publicacao */}
+      <div style={styles.card}>
+        <h3 style={{ marginTop: 0 }}>Adicionar disponibilidade</h3>
         <div style={styles.grid}>
           <div>
             <label style={{ display: "block", color: "#374151", fontWeight: 600, marginBottom: 6 }}>Data</label>
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={styles.input} />
           </div>
           <div>
-            <label style={{ display: "block", color: "#374151", fontWeight: 600, marginBottom: 6 }}>Início</label>
+            <label style={{ display: "block", color: "#374151", fontWeight: 600, marginBottom: 6 }}>Inicio</label>
             <input type="time" value={start} onChange={(e) => setStart(e.target.value)} style={styles.input} />
           </div>
           <div>
@@ -198,49 +251,49 @@ export default function AgendaConfigPage() {
             <input type="time" value={end} onChange={(e) => setEnd(e.target.value)} style={styles.input} />
           </div>
           <div>
-            <label style={{ display: "block", color: "#374151", fontWeight: 600, marginBottom: 6 }}>Duração (min)</label>
+            <label style={{ display: "block", color: "#374151", fontWeight: 600, marginBottom: 6 }}>Duracao (min)</label>
             <input disabled value={duration} style={styles.input} />
           </div>
         </div>
-        <div style={{ marginTop: 14 }}>
-          <button onClick={handlePublish} disabled={loadingPublish} style={styles.button}>
+        <div style={{ marginTop: 16 }}>
+          <button style={styles.button} onClick={handlePublish} disabled={loadingPublish}>
             {loadingPublish ? "Publicando..." : "Publicar disponibilidade"}
           </button>
         </div>
       </div>
 
-      {/* Solicitações pendentes (PENDING) */}
+      {/* Solicitacoes pendentes (PENDING) */}
       <div style={{ ...styles.card, marginTop: 18 }}>
         <h3 style={{ marginTop: 0, marginBottom: 8 }}>Solicitações pendentes</h3>
         {pending.length === 0 ? (
           <div style={{ color: "#6B7280" }}>Nenhuma solicitação pendente.</div>
         ) : (
           <div style={styles.list}>
-            {pending.map((a) => (
-              <div key={a.id} style={styles.item}>
+            {pending.map((appt) => (
+              <div key={appt.id} style={styles.item}>
                 <div>
                   <div style={{ fontWeight: 800, color: "#111827" }}>
-                    {fmt(a.slotStartsAt)} → {fmt(a.slotEndsAt)}
+                    {fmt(appt.slotStartsAt)} → {fmt(appt.slotEndsAt)}
                     <span style={styles.tag("#92400E")}>PENDING</span>
                   </div>
-                  <div style={{ color: "#6B7280", fontSize: 14 }}>Paciente: {a.patientId}</div>
+                  <div style={{ color: "#6B7280", fontSize: 14 }}>Paciente: {getDisplayName(appt.patientId)}</div>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button
-                    onClick={() => handleDecline(a.id)}
-                    disabled={working === a.id}
+                    onClick={() => handleDecline(appt.id)}
+                    disabled={actionState[appt.id]?.loading}
                     style={styles.secondary}
-                    title="Recusar"
+                    aria-label={`Recusar solicitacao de ${getDisplayName(appt.patientId)}`}
                   >
-                    Recusar
+                    {actionState[appt.id]?.loading ? "Processando..." : "Recusar"}
                   </button>
                   <button
-                    onClick={() => handleApprove(a.id)}
-                    disabled={working === a.id}
+                    onClick={() => handleApprove(appt.id)}
+                    disabled={actionState[appt.id]?.loading}
                     style={styles.success}
-                    title="Confirmar"
+                    aria-label={`Confirmar solicitacao de ${getDisplayName(appt.patientId)}`}
                   >
-                    Confirmar
+                    {actionState[appt.id]?.loading ? "Processando..." : "Confirmar"}
                   </button>
                 </div>
               </div>
@@ -249,21 +302,21 @@ export default function AgendaConfigPage() {
         )}
       </div>
 
-      {/* Próximos confirmados */}
+      {/* Proximos confirmados */}
       <div style={{ ...styles.card, marginTop: 18 }}>
         <h3 style={{ marginTop: 0, marginBottom: 8 }}>Próximas sessões confirmadas</h3>
         {confirmed.length === 0 ? (
           <div style={{ color: "#6B7280" }}>Nenhuma sessão confirmada.</div>
         ) : (
           <div style={styles.list}>
-            {confirmed.map((a) => (
-              <div key={a.id} style={styles.item}>
+            {confirmed.map((appt) => (
+              <div key={appt.id} style={styles.item}>
                 <div>
                   <div style={{ fontWeight: 800, color: "#111827" }}>
-                    {fmt(a.slotStartsAt)} → {fmt(a.slotEndsAt)}
+                    {fmt(appt.slotStartsAt)} → {fmt(appt.slotEndsAt)}
                     <span style={styles.tag("#065F46")}>CONFIRMED</span>
                   </div>
-                  <div style={{ color: "#6B7280", fontSize: 14 }}>Paciente: {a.patientId}</div>
+                  <div style={{ color: "#6B7280", fontSize: 14 }}>Paciente: {getDisplayName(appt.patientId)}</div>
                 </div>
               </div>
             ))}
@@ -271,65 +324,67 @@ export default function AgendaConfigPage() {
         )}
       </div>
 
-      {/* Seus horários publicados */}
+      {/* Seus horarios publicados */}
       <div style={{ ...styles.card, marginTop: 18 }}>
         <h3 style={{ marginTop: 0, marginBottom: 8 }}>Meus horários</h3>
         <div style={styles.list}>
           {slots.length === 0 ? (
             <div style={{ color: "#6B7280" }}>Nenhum horário publicado.</div>
           ) : (
-            slots.map((s) => (
-              <div key={s.id} style={styles.item}>
+            slots.map((slot) => (
+              <div key={slot.id} style={styles.item}>
                 <div>
                   <div style={{ fontWeight: 800, color: "#111827" }}>
-                    {fmt(s.startsAt)} → {fmt(s.endsAt)}
+                    {fmt(slot.startsAt)} → {fmt(slot.endsAt)}
                     <span
                       style={styles.tag(
-                        s.status === "OPEN" ? "#065F46" : s.status === "HELD" ? "#92400E" : "#1D4ED8"
+                        slot.status === "OPEN" ? "#065F46" : slot.status === "HELD" ? "#92400E" : "#1D4ED8"
                       )}
                     >
-                      {s.status}
+                      {slot.status}
                     </span>
                   </div>
-                  {s.requestedBy && (
+                  {slot.requestedBy && (
                     <div style={{ color: "#6B7280", fontSize: 14 }}>
-                      solicitado por: <b>{s.requestedBy}</b>
+                      solicitado por: <b>{getDisplayName(slot.requestedBy)}</b>
                     </div>
                   )}
                 </div>
                 {/* Ações por status */}
-                {s.status === "OPEN" ? (
+                {slot.status === "OPEN" ? (
                   <button
-                    onClick={() => handleDelete(s.id)}
-                    disabled={working === s.id}
+                    onClick={() => handleDelete(slot.id)}
+                    disabled={working === slot.id}
                     style={styles.danger}
                     title="Excluir"
                   >
                     Excluir
                   </button>
-                ) : s.status === "HELD" ? (
+                ) : slot.status === "HELD" ? (
                   <div style={{ display: "flex", gap: 8 }}>
-                    {/** localiza o appointment pendente correspondente */}
                     {(() => {
                       const appt = pending.find(
-                        (a) => a.slotStartsAt === s.startsAt && a.slotEndsAt === s.endsAt
+                        (candidate) =>
+                          candidate.slotStartsAt === slot.startsAt && candidate.slotEndsAt === slot.endsAt
                       );
                       if (!appt) return null;
                       return (
                         <>
                           <button
                             onClick={() => handleDecline(appt.id)}
-                            disabled={working === appt.id}
+                            disabled={actionState[appt.id]?.loading}
                             style={styles.secondary}
+                            aria-label={`Recusar solicitacao de ${getDisplayName(appt.patientId)}`}
                           >
-                            Recusar
+                            {actionState[appt.id]?.loading ? "Processando..." : "Recusar"}
                           </button>
                           <button
                             onClick={() => handleApprove(appt.id)}
-                            disabled={working === appt.id}
+                            disabled={actionState[appt.id]?.loading}
                             style={styles.success}
+                            aria-label={`Confirmar solicitacao de ${getDisplayName(appt.patientId)}`}
                           >
-                            Confirmar
+                            {actionState[appt.id]?.loading ? "Processando..." : "Confirmar"}
                           </button>
                         </>
                       );

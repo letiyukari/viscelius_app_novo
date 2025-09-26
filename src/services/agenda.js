@@ -94,13 +94,17 @@ export async function listOpenSlotsByTherapist(therapistId, fromIso) {
 }
 
 /** stream de todos os slots do terapeuta (ordenados por startsAt) */
-export function subscribeSlots(therapistId, cb) {
+export function subscribeSlots(therapistId, cb, onError) {
   const base = collection(db, "therapists", therapistId, "slots");
   const qy = query(base, orderBy("startsAt", "asc"));
-  return onSnapshot(qy, (snap) => {
-    const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    cb(data);
-  });
+  const observer = {
+    next: (snap) => {
+      const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      cb(data);
+    },
+  };
+  if (onError) observer.error = onError;
+  return onSnapshot(qy, observer);
 }
 
 /** excluir slot somente quando status = OPEN */

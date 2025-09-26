@@ -1,4 +1,4 @@
-﻿// src/App.js
+// src/App.js
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
@@ -8,7 +8,7 @@ import RegisterPage from './screens/auth/RegisterPage';
 import RegisterTherapistPage from './screens/auth/RegisterTherapistPage';
 import Navbar from './components/layout/Navbar';
 import HomePage from './screens/patient/HomePage';
-import AgendamentosPage from './screens/patient/AgendamentosPage';
+import AgendaPage from './screens/patient/AgendaPage';
 import PlaylistsPage from './screens/patient/PlaylistsPage';
 import HistoricoPage from './screens/patient/HistoricoPage';
 import ProfilePage from './screens/patient/ProfilePage';
@@ -102,7 +102,7 @@ function App() {
               element={
                 <RequireRole userRole={userRole} requiredRole="patient" redirectTo="/dashboard">
                   <MainLayout userRole={userRole} onLogout={logout}>
-                    <AgendamentosPage user={user} />
+                    <AgendaPage user={user} />
                   </MainLayout>
                 </RequireRole>
               }
