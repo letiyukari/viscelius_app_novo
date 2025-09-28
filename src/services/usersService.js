@@ -8,13 +8,22 @@ const profileCache = new Map();
 const labelCache = new Map();
 
 function normalizeSpecialty(data = {}) {
-  if (Array.isArray(data.specialties)) {
-    return data.specialties
+  const source = data || {};
+  const specialties = source.specialties;
+  if (Array.isArray(specialties)) {
+    return specialties
       .map((value) => (value == null ? "" : String(value).trim()))
       .filter(Boolean)
       .join(", ");
   }
-  const single = data.specialty == null ? "" : String(data.specialty).trim();
+  if (typeof specialties === "string") {
+    return specialties
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .join(", ");
+  }
+  const single = source.specialty == null ? "" : String(source.specialty).trim();
   return single;
 }
 
@@ -39,7 +48,8 @@ export async function getUserProfile(uid) {
   return profile;
 }
 
-export async function getMultipleUserProfiles(uids = []) {
+export async function getMultipleUserProfiles(uids = [], options = {}) {
+  const { forceRefresh = false } = options || {};
   const unique = Array.from(new Set((uids || []).filter(Boolean)));
   if (unique.length === 0) return {};
 
@@ -47,7 +57,7 @@ export async function getMultipleUserProfiles(uids = []) {
   const pending = [];
 
   unique.forEach((uid) => {
-    if (profileCache.has(uid)) {
+    if (!forceRefresh && profileCache.has(uid)) {
       result[uid] = profileCache.get(uid);
     } else {
       pending.push(uid);
@@ -116,3 +126,10 @@ export function clearUserProfileCache() {
   profileCache.clear();
   labelCache.clear();
 }
+
+export function invalidateUserProfileCache(uid) {
+  if (!uid) return;
+  profileCache.delete(uid);
+  labelCache.delete(uid);
+}
+

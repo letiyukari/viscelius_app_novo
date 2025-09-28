@@ -197,7 +197,7 @@ export default function AgendaPage({ user }) {
           return;
         }
 
-        const map = await getMultipleUserProfiles(idList);
+        const map = await getMultipleUserProfiles(idList, { forceRefresh: true });
         if (!mounted) return;
 
         const optionSet = new Set();
@@ -282,7 +282,7 @@ export default function AgendaPage({ user }) {
     );
 
     if (!profiles[selectedId]) {
-      getMultipleUserProfiles([selectedId])
+      getMultipleUserProfiles([selectedId], { forceRefresh: true })
         .then((map) => setProfiles((prev) => ({ ...prev, ...map })))
         .catch((error) => console.error(error));
     }
@@ -624,3 +624,4 @@ export default function AgendaPage({ user }) {
     </div>
   );
 }
+
