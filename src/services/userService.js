@@ -7,11 +7,32 @@ import {
   updateDoc,
   serverTimestamp,
 } from 'firebase/firestore';
+import { invalidateUserProfileCache } from './usersService';
 
 export function normalizeRole(role) {
   if (!role) return 'patient';
   const r = String(role).toLowerCase();
   return r === 'therapist' ? 'therapist' : 'patient';
+}
+
+function sanitizeSpecialtiesInput(value) {
+  if (value == null) return null;
+  if (Array.isArray(value)) {
+    const cleaned = value
+      .map((item) => (item == null ? '' : String(item).trim()))
+      .filter(Boolean);
+    return cleaned.length > 0 ? cleaned : null;
+  }
+  if (typeof value === 'string') {
+    return sanitizeSpecialtiesInput(
+      value
+        .split(',')
+        .map((part) => part.trim())
+        .filter(Boolean)
+    );
+  }
+  const single = String(value).trim();
+  return single ? [single] : null;
 }
 
 /**
@@ -45,6 +66,7 @@ export async function ensureUserDocAndRole({
       updatedAt: serverTimestamp(),
     };
     await setDoc(userRef, payload, { merge: true });
+    invalidateUserProfileCache(uid);
     return payload;
   }
 
@@ -84,6 +106,7 @@ export async function ensureUserDocAndRole({
   if (changed) {
     merged.updatedAt = serverTimestamp();
     await updateDoc(userRef, merged);
+    invalidateUserProfileCache(uid);
   }
 
   return merged;
@@ -106,13 +129,23 @@ export async function updateProfileByRole(uid, role, fields) {
   if (r === 'patient') {
     if ('birthDate' in fields) safe.birthDate = fields.birthDate || null;
   }
-
   if (r === 'therapist') {
     if ('professionalId' in fields) safe.professionalId = fields.professionalId || null;
-    if ('specialties' in fields) safe.specialties = fields.specialties || null;
+    if ('specialties' in fields) {
+      const normalizedSpecialties = sanitizeSpecialtiesInput(fields.specialties);
+      safe.specialties = normalizedSpecialties;
+    }
   }
 
   safe.updatedAt = serverTimestamp();
   await updateDoc(userRef, safe);
+  invalidateUserProfileCache(uid);
   return true;
 }
+
+
+
+
+
+
+

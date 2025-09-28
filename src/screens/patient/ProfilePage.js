@@ -24,13 +24,34 @@ function getInitials(nameOrEmail) {
   // Se for email e não tiver nome, usa parte antes do @
   const name = source.includes('@') ? source.split('@')[0] : source;
   const parts = name
-    .replace(/[_\-\.]+/g, ' ')
+    .replace(/[-_.]+/g, ' ')
     .split(' ')
     .filter(Boolean);
   if (parts.length === 1) {
     return parts[0].substring(0, 2).toUpperCase();
   }
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+
+function parseSpecialtiesInput(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => (item == null ? '' : String(item).trim()))
+      .filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  if (value == null) return [];
+  return [String(value).trim()].filter(Boolean);
+}
+
+function stringifySpecialties(value) {
+  return parseSpecialtiesInput(value).join(', ');
 }
 
 const ProfilePage = ({ user, onLogout }) => {
@@ -67,13 +88,20 @@ const ProfilePage = ({ user, onLogout }) => {
         });
 
         if (!live) return;
-        setUserDoc(ensured);
+        const specialtyList = parseSpecialtiesInput(ensured.specialties);
+        const specialtyText = specialtyList.join(', ');
+        const normalizedDoc = {
+          ...ensured,
+          specialties: specialtyList.length ? specialtyList : null,
+          specialtyText,
+        };
+        setUserDoc(normalizedDoc);
         setForm({
-          displayName: user.displayName ?? ensured.displayName ?? '',
-          phone: ensured.phone ?? '',
-          birthDate: ensured.birthDate ?? '',
-          professionalId: ensured.professionalId ?? '',
-          specialties: ensured.specialties ?? '',
+          displayName: user.displayName ?? normalizedDoc.displayName ?? '',
+          phone: normalizedDoc.phone ?? '',
+          birthDate: normalizedDoc.birthDate ?? '',
+          professionalId: normalizedDoc.professionalId ?? '',
+          specialties: specialtyText,
         });
       } catch (e) {
         console.error('Erro ao carregar perfil:', e);
@@ -129,12 +157,20 @@ const ProfilePage = ({ user, onLogout }) => {
         await updateProfile(auth.currentUser, { displayName: form.displayName });
       }
 
+      const specialtiesList =
+        role === 'therapist' ? parseSpecialtiesInput(form.specialties) : [];
+      const specialtiesPayload =
+        role === 'therapist'
+          ? (specialtiesList.length ? specialtiesList : null)
+          : undefined;
+      const specialtiesText = specialtiesList.join(', ');
+
       await updateProfileByRole(user.uid, role, {
         displayName: form.displayName || null,
         phone: form.phone || null,
         birthDate: role === 'patient' ? (form.birthDate || null) : undefined,
         professionalId: role === 'therapist' ? (form.professionalId || null) : undefined,
-        specialties: role === 'therapist' ? (form.specialties || null) : undefined,
+        specialties: specialtiesPayload,
       });
 
       setUserDoc((prev) => ({
@@ -143,7 +179,13 @@ const ProfilePage = ({ user, onLogout }) => {
         phone: form.phone || '',
         birthDate: role === 'patient' ? (form.birthDate || '') : prev.birthDate,
         professionalId: role === 'therapist' ? (form.professionalId || '') : prev.professionalId,
-        specialties: role === 'therapist' ? (form.specialties || '') : prev.specialties,
+        specialties: role === 'therapist' ? specialtiesPayload : prev.specialties,
+        specialtyText: role === 'therapist' ? specialtiesText : prev.specialtyText,
+      }));
+
+      setForm((prev) => ({
+        ...prev,
+        specialties: role === 'therapist' ? specialtiesText : prev.specialties,
       }));
 
       setNotif({ message: 'Informações salvas!', type: 'success' });
@@ -170,7 +212,7 @@ const ProfilePage = ({ user, onLogout }) => {
       phone: userDoc?.phone || '',
       birthDate: userDoc?.birthDate || '',
       professionalId: userDoc?.professionalId || '',
-      specialties: userDoc?.specialties || '',
+      specialties: stringifySpecialties(userDoc?.specialties ?? userDoc?.specialtyText ?? ''),
     };
   }, [user, userDoc]);
 
@@ -296,3 +338,11 @@ const ProfilePage = ({ user, onLogout }) => {
 };
 
 export default ProfilePage;
+
+
+
+
+
+
+
+
