@@ -7,6 +7,7 @@ import PlaylistSongsModal from '../../components/therapist/PlaylistSongsModal';
 import Notification from '../../components/common/Notification';
 
 const TherapistDashboardPage = ({ user }) => {
+    const therapistUid = user?.uid;
     const [playlists, setPlaylists] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -16,9 +17,15 @@ const TherapistDashboardPage = ({ user }) => {
     const [notification, setNotification] = useState({ message: '', type: '' });
 
     useEffect(() => {
-        if (!user) return;
+        if (!therapistUid) {
+            setPlaylists([]);
+            setLoading(false);
+            return undefined;
+        }
+        setLoading(true);
+        setError(null);
         const playlistsCollectionRef = collection(db, 'playlists');
-        const q = query(playlistsCollectionRef, where("therapistUid", "==", user.uid));
+        const q = query(playlistsCollectionRef, where("therapistUid", "==", therapistUid));
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const playlistsData = [];
             querySnapshot.forEach((doc) => {
@@ -32,7 +39,7 @@ const TherapistDashboardPage = ({ user }) => {
             setLoading(false);
         });
         return () => unsubscribe();
-    }, [user]);
+    }, [therapistUid]);
 
     const handleOpenSongsModal = (playlist) => {
         setSelectedPlaylist(playlist);

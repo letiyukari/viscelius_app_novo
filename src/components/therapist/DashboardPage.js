@@ -7,6 +7,7 @@ import Notification from '../common/Notification';
 import PatientDetailModal from './PatientDetailModal';
 
 const DashboardPage = ({ user }) => { 
+    const therapistUid = user?.uid;
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [viewingPatient, setViewingPatient] = useState(null);
     const [patients, setPatients] = useState([]);
@@ -15,13 +16,21 @@ const DashboardPage = ({ user }) => {
     const [notification, setNotification] = useState({ message: '', type: '' });
 
     useEffect(() => {
-        if (!user) return;
+        if (!therapistUid) {
+            setPatients([]);
+            setLoading(false);
+            setError(null);
+            return undefined;
+        }
+        setLoading(true);
+        setError(null);
         const usersCollectionRef = collection(db, 'users');
-        
+
         // ======================= O ERRO ESTAVA AQUI =======================
         // Corrigido de "usersCollection_ref" para "usersCollectionRef"
-        const q = query(usersCollectionRef, where("therapistUid", "==", user.uid));
         // ====================================================================
+
+        const q = query(usersCollectionRef, where("therapistUid", "==", therapistUid));
 
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const patientsData = [];
@@ -32,11 +41,11 @@ const DashboardPage = ({ user }) => {
             setLoading(false);
         }, (err) => {
             console.error("Erro ao carregar pacientes:", err);
-            setError("Não foi possível carregar os pacientes.");
+            setError("Nao foi possivel carregar os pacientes.");
             setLoading(false);
         });
         return () => unsubscribe();
-    }, [user]);
+    }, [therapistUid]);
 
     const styles = {
         pageContainer: { padding: '2rem 3.5rem', backgroundColor: '#F9FAFB', fontFamily: '"Inter", sans-serif', minHeight: '100vh' },

@@ -24,6 +24,7 @@ const TherapistDashboardPage = ({ user }) => {
   const [error, setError] = useState(null);
   const [notification, setNotification] = useState({ message: '', type: '' });
   const [userData, setUserData] = useState(null);
+  const therapistUid = user?.uid;
 
   // pega o displayName no Firestore
   useEffect(() => {
@@ -45,9 +46,16 @@ const TherapistDashboardPage = ({ user }) => {
 
   // carrega pacientes do terapeuta
   useEffect(() => {
-    if (!user) return;
+    if (!therapistUid) {
+      setPatients([]);
+      setLoading(false);
+      setError(null);
+      return undefined;
+    }
+    setLoading(true);
+    setError(null);
     const usersCollectionRef = collection(db, 'users');
-    const q = query(usersCollectionRef, where('therapistUid', '==', user.uid));
+    const q = query(usersCollectionRef, where('therapistUid', '==', therapistUid));
     const unsubscribe = onSnapshot(
       q,
       (querySnapshot) => {
@@ -60,12 +68,12 @@ const TherapistDashboardPage = ({ user }) => {
       },
       (err) => {
         console.error('Erro ao carregar pacientes:', err);
-        setError('Não foi possível carregar os pacientes.');
+        setError('Nao foi possivel carregar os pacientes.');
         setLoading(false);
       }
     );
     return () => unsubscribe();
-  }, [user]);
+  }, [therapistUid]);
 
   const styles = {
     pageContainer: { padding: '2rem 3.5rem', backgroundColor: '#F9FAFB', fontFamily: '"Inter", sans-serif' },

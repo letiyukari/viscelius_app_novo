@@ -158,10 +158,17 @@ export default function AgendaPage({ user }) {
   }, [patientId]);
 
   useEffect(() => {
-    if (!patientId) return () => undefined;
-    const unsubscribe = subscribePatientAppointments(patientId, (data) => setAppointments(data || []));
+    if (!patientId) {
+      setAppointments([]);
+      return undefined;
+    }
+    let unsub = null;
+    const timer = setTimeout(() => {
+      unsub = subscribePatientAppointments(patientId, (data) => setAppointments(data || []));
+    }, 160);
     return () => {
-      if (typeof unsubscribe === "function") unsubscribe();
+      clearTimeout(timer);
+      if (typeof unsub === "function") unsub();
     };
   }, [patientId]);
 
@@ -251,6 +258,20 @@ export default function AgendaPage({ user }) {
     });
   }, [therapists, allTherapists]);
 
+  useEffect(() => {
+    if (!selectedId || profiles[selectedId]) return undefined;
+    let active = true;
+    getMultipleUserProfiles([selectedId], { forceRefresh: true })
+      .then((map) => {
+        if (!active) return;
+        setProfiles((prev) => ({ ...prev, ...map }));
+      })
+      .catch((error) => console.error(error));
+    return () => {
+      active = false;
+    };
+  }, [selectedId, profiles]);
+
   const selectedTherapist = useMemo(
     () => therapists.find((therapist) => therapist.id === selectedId) || null,
     [therapists, selectedId]
@@ -260,38 +281,36 @@ export default function AgendaPage({ user }) {
     if (!selectedId) {
       setSlots([]);
       setSlotsLoading(false);
-      return () => undefined;
+      return undefined;
     }
     let active = true;
     setSlotsLoading(true);
     setSlotsError("");
 
-    const unsubscribe = subscribeSlots(
-      selectedId,
-      (data) => {
-        if (!active) return;
-        setSlots(data || []);
-        setSlotsLoading(false);
-      },
-      (error) => {
-        console.error(error);
-        if (!active) return;
-        setSlotsError("Não foi possível carregar os horários deste musicoterapeuta.");
-        setSlotsLoading(false);
-      }
-    );
-
-    if (!profiles[selectedId]) {
-      getMultipleUserProfiles([selectedId], { forceRefresh: true })
-        .then((map) => setProfiles((prev) => ({ ...prev, ...map })))
-        .catch((error) => console.error(error));
-    }
+    let unsub = null;
+    const timer = setTimeout(() => {
+      unsub = subscribeSlots(
+        selectedId,
+        (data) => {
+          if (!active) return;
+          setSlots(data || []);
+          setSlotsLoading(false);
+        },
+        (error) => {
+          console.error(error);
+          if (!active) return;
+          setSlotsError("Nao foi possivel carregar os horarios deste musicoterapeuta.");
+          setSlotsLoading(false);
+        }
+      );
+    }, 160);
 
     return () => {
       active = false;
-      if (typeof unsubscribe === "function") unsubscribe();
+      clearTimeout(timer);
+      if (typeof unsub === "function") unsub();
     };
-  }, [selectedId, profiles]);
+  }, [selectedId]);
 
   const appointmentsBySlot = useMemo(() => {
     const map = {};
