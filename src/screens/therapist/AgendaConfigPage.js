@@ -153,6 +153,14 @@ export default function AgendaConfigPage() {
 
   const pending = useMemo(() => apps.filter((a) => a.status === "PENDING"), [apps]);
   const confirmed = useMemo(() => apps.filter((a) => a.status === "CONFIRMED"), [apps]);
+  const canceled = useMemo(() =>
+    apps
+      .filter((a) => a.status === "CANCELED")
+      .slice()
+      .sort((a, b) => new Date(b.slotStartsAt).getTime() - new Date(a.slotStartsAt).getTime()),
+    [apps]
+  );
+
 
   const fallbackName = "Usuario";
   const getDisplayName = (uid) => {
@@ -317,6 +325,30 @@ export default function AgendaConfigPage() {
                     <span style={styles.tag("#065F46")}>CONFIRMED</span>
                   </div>
                   <div style={{ color: "#6B7280", fontSize: 14 }}>Paciente: {getDisplayName(appt.patientId)}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Cancelamentos recentes */}
+      <div style={{ ...styles.card, marginTop: 18 }}>
+        <h3 style={{ marginTop: 0, marginBottom: 8 }}>Cancelamentos recentes</h3>
+        {canceled.length === 0 ? (
+          <div style={{ color: "#6B7280" }}>Nenhum cancelamento registrado.</div>
+        ) : (
+          <div style={styles.list}>
+            {canceled.map((appt) => (
+              <div key={appt.id} style={styles.item}>
+                <div>
+                  <div style={{ fontWeight: 800, color: "#111827" }}>
+                    {fmt(appt.slotStartsAt)} - {fmt(appt.slotEndsAt)}
+                    <span style={styles.tag("#374151")}>CANCELED</span>
+                  </div>
+                  <div style={{ color: "#6B7280", fontSize: 14 }}>
+                    Paciente {getDisplayName(appt.patientId)} cancelou este agendamento.
+                  </div>
                 </div>
               </div>
             ))}
