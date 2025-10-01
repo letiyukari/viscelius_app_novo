@@ -42,9 +42,31 @@ const slotBadgeClass = (status) => {
   }
 };
 
-const fmtDT = (iso) => {
+const appointmentBadgeClass = (status) => {
+  switch (status) {
+    case "PENDING":
+      return "tw-badge tw-badge-pending";
+    case "CONFIRMED":
+      return "tw-badge tw-badge-confirmed";
+    case "CANCELED":
+      return "tw-badge tw-badge-canceled";
+    case "DECLINED":
+      return "tw-badge tw-badge-muted";
+    default:
+      return "tw-badge tw-badge-muted";
+  }
+};
+
+const fmtDateWithWeekday = (iso) => {
   try {
-    return new Date(iso).toLocaleString();
+    const date = new Date(iso);
+    const datePart = date.toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+    const weekday = date.toLocaleDateString("pt-BR", { weekday: "long" });
+    return `${datePart} (${weekday})`;
   } catch (error) {
     console.error(error);
     return iso;
@@ -571,7 +593,7 @@ export default function AgendaPage({ user }) {
                                     {slotStatusText[slot.status] || slot.status}
                                   </span>
                                   {myStatus && (
-                                    <span className="tw-badge tw-badge-ghost">
+                                    <span className={appointmentBadgeClass(myStatus)}>
                                       Minha solicitação: {appointmentStatusLabels[myStatus] || myStatus}
                                     </span>
                                   )}
@@ -580,14 +602,14 @@ export default function AgendaPage({ user }) {
                               <td className="tw-text-right">
                                 {canCancel && appt ? (
                                   <button
-                                    className="tw-btn tw-btn-secondary"
+                                    className="tw-btn tw-btn-danger"
                                     onClick={() => onCancel(appt.id)}
                                     disabled={canceling}
                                   >
                                     {canceling ? "Cancelando..." : "Cancelar"}
                                   </button>
                                 ) : myStatus === "CANCELED" ? (
-                                  <span className="tw-badge tw-badge-muted">Cancelado</span>
+                                  <span className={appointmentBadgeClass(appt.status)}>Cancelado</span>
                                 ) : (
                                   <button
                                     className="tw-btn tw-btn-primary"
@@ -636,26 +658,26 @@ export default function AgendaPage({ user }) {
                         <div key={appt.id} className="tw-flex tw-justify-between tw-items-center tw-gap-3">
                           <div className="tw-flex tw-flex-col tw-gap-1">
                             <span className="tw-text-sm tw-font-semibold tw-text-slate-900">
-                              {fmtDT(appt.slotStartsAt)} – {fmtDT(appt.slotEndsAt)}
+                              {fmtDateWithWeekday(appt.slotStartsAt)} → {fmtTime(appt.slotStartsAt)} - {fmtTime(appt.slotEndsAt)}
                             </span>
                             <span className="tw-text-xs tw-text-slate-500">
                               Musicoterapeuta: {therapistLabel.name} — {therapistLabel.specialtyText}
                             </span>
                             <span className="tw-text-xs tw-text-slate-500">Paciente: {patientLabel}</span>
-                            <span className="tw-badge tw-badge-muted">
+                            <span className={appointmentBadgeClass(appt.status)}>
                               {appointmentStatusLabels[appt.status] || appt.status}
                             </span>
                           </div>
                           {appt.status === "PENDING" || appt.status === "CONFIRMED" ? (
                             <button
-                              className="tw-btn tw-btn-secondary"
+                              className="tw-btn tw-btn-danger"
                               onClick={() => onCancel(appt.id)}
                               disabled={cancelingId === appt.id}
                             >
                               {cancelingId === appt.id ? "Cancelando..." : "Cancelar"}
                             </button>
                           ) : appt.status === "CANCELED" ? (
-                            <span className="tw-badge tw-badge-muted">Cancelado</span>
+                            <span className={appointmentBadgeClass(appt.status)}>Cancelado</span>
                           ) : null}
                         </div>
                       );
