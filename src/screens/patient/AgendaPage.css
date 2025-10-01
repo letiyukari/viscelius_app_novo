@@ -67,16 +67,18 @@
 .tw-btn:disabled { cursor: not-allowed; opacity: 0.6; }
 .tw-btn-primary { background: linear-gradient(135deg, #7c3aed, #6d28d9); color: #ffffff; box-shadow: 0 10px 20px rgba(124, 58, 237, 0.15); }
 .tw-btn-secondary { background-color: #f3f4f6; color: #374151; }
+.tw-btn-danger { background: linear-gradient(135deg, #fecaca, #fca5a5); color: #7f1d1d; box-shadow: 0 10px 20px rgba(220, 38, 38, 0.15); }
 .tw-btn-ghost { background-color: transparent; color: #4b5563; }
 .tw-tag-group { display: inline-flex; gap: 0.35rem; flex-wrap: wrap; }
 .tw-badge { display: inline-flex; align-items: center; justify-content: center; padding: 0.25rem 0.65rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; }
-.tw-badge-available { background-color: #ecfdf5; color: #047857; }
-.tw-badge-held { background-color: #fef3c7; color: #b45309; }
-.tw-badge-booked { background-color: #eef2ff; color: #4338ca; }
+.tw-badge-available { background-color: #dbeafe; color: #1d4ed8; }
+.tw-badge-held { background-color: #fef9c3; color: #a16207; }
+.tw-badge-booked { background-color: #dcfce7; color: #047857; }
 .tw-badge-muted { background-color: #e5e7eb; color: #374151; }
+.tw-badge-canceled { background-color: #fee2e2; color: #b91c1c; }
 .tw-badge-pending { background-color: #fef3c7; color: #92400e; }
 .tw-badge-confirmed { background-color: #dcfce7; color: #065f46; }
-.tw-badge-ghost { background-color: rgba(124, 58, 237, 0.12); color: #4c1d95; }
+.tw-badge-ghost { background-color: rgba(196, 181, 253, 0.45); color: #5b21b6; }
 .tw-therapist-card { display: flex; align-items: center; gap: 0.75rem; padding: 0.85rem; border-radius: 0.85rem; border: 1px solid #e5e7eb; background-color: #ffffff; cursor: pointer; transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease; text-align: left; }
 .tw-therapist-card:hover { border-color: #c4b5fd; box-shadow: 0 12px 24px rgba(124, 58, 237, 0.12); transform: translateY(-1px); }
 .tw-therapist-card-active { border-color: #7c3aed; box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.15); }

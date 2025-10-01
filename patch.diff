@@ -1,0 +1,42 @@
+﻿*** Begin Patch
+*** Update File: src/screens/patient/AgendaPage.js
+@@
+-  async function onCancel(apptId) {
+-    try {
+-      setCancelingId(apptId);
+-      await cancelAppointment(apptId);
+-    } catch (error) {
+-      console.error(error);
+-      setSlotsError(error?.message || "Nao foi possivel cancelar este agendamento.");
+-    } finally {
+-      setCancelingId(null);
+-    }
+-  }
++  async function onCancel(apptId) {
++    if (!apptId) return;
++    if (!window.confirm("Tem certeza que deseja cancelar este agendamento?")) return;
++
++    const previous = appointments.find((appt) => appt.id === apptId) || null;
++
++    try {
++      setCancelingId(apptId);
++      setSlotsError("");
++      if (previous && previous.status !== "CANCELED") {
++        setAppointments((prev) =>
++          prev.map((appt) => (appt.id === apptId ? { ...appt, status: "CANCELED" } : appt))
++        );
++      }
++      await cancelAppointment(apptId);
++    } catch (error) {
++      console.error(error);
++      if (previous) {
++        setAppointments((prev) => prev.map((appt) => (appt.id === apptId ? previous : appt)));
++      }
++      const message = error?.message || "Nao foi possivel cancelar este agendamento.";
++      setSlotsError(message);
++      alert(message);
++    } finally {
++      setCancelingId(null);
++    }
++  }
+*** End Patch

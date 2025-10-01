@@ -1,4 +1,4 @@
-// src/screens/patient/AgendaPage.js
+﻿// src/screens/patient/AgendaPage.js
 import React, { useEffect, useMemo, useState } from "react";
 import { collectionGroup, getDocs } from "firebase/firestore";
 import { db } from "../../firebase";
@@ -42,9 +42,31 @@ const slotBadgeClass = (status) => {
   }
 };
 
-const fmtDT = (iso) => {
+const appointmentBadgeClass = (status) => {
+  switch (status) {
+    case "PENDING":
+      return "tw-badge tw-badge-pending";
+    case "CONFIRMED":
+      return "tw-badge tw-badge-confirmed";
+    case "CANCELED":
+      return "tw-badge tw-badge-canceled";
+    case "DECLINED":
+      return "tw-badge tw-badge-muted";
+    default:
+      return "tw-badge tw-badge-muted";
+  }
+};
+
+const fmtDateWithWeekday = (iso) => {
   try {
-    return new Date(iso).toLocaleString();
+    const date = new Date(iso);
+    const datePart = date.toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+    const weekday = date.toLocaleDateString("pt-BR", { weekday: "long" });
+    return `${datePart} (${weekday})`;
   } catch (error) {
     console.error(error);
     return iso;
@@ -368,12 +390,32 @@ export default function AgendaPage({ user }) {
   }
 
   async function onCancel(apptId) {
+    if (!apptId) return;
+    const confirmCancel =
+      typeof window !== "undefined" && typeof window.confirm === "function"
+        ? window.confirm("Tem certeza que deseja cancelar o agendamento?")
+        : true;
+    if (!confirmCancel) return;
+
+    const previous = appointments.find((appt) => appt.id === apptId) || null;
+
     try {
       setCancelingId(apptId);
+      setSlotsError("");
+      if (previous && previous.status !== "CANCELED") {
+        setAppointments((prev) =>
+          prev.map((appt) => (appt.id === apptId ? { ...appt, status: "CANCELED" } : appt))
+        );
+      }
       await cancelAppointment(apptId);
     } catch (error) {
       console.error(error);
-      setSlotsError(error?.message || "Não foi possível cancelar este agendamento.");
+      if (previous) {
+        setAppointments((prev) => prev.map((appt) => (appt.id === apptId ? previous : appt)));
+      }
+      const message = error?.message || "Nao foi possivel cancelar este agendamento.";
+      setSlotsError(message);
+      alert(message);
     } finally {
       setCancelingId(null);
     }
@@ -530,6 +572,8 @@ export default function AgendaPage({ user }) {
                           const appt = appointmentsBySlot[slot.id];
                           const myStatus = appt?.status;
                           const requesting = requestingSlotId === slot.id;
+                          const canceling = appt && cancelingId === appt.id;
+                          const canCancel = myStatus === "PENDING" || myStatus === "CONFIRMED";
                           const disabled = (slot.status !== "OPEN" && !myStatus) || requesting;
                           const actionLabel = requesting
                             ? "Solicitando..."
@@ -549,21 +593,23 @@ export default function AgendaPage({ user }) {
                                     {slotStatusText[slot.status] || slot.status}
                                   </span>
                                   {myStatus && (
-                                    <span className="tw-badge tw-badge-ghost">
+                                    <span className={appointmentBadgeClass(myStatus)}>
                                       Minha solicitação: {appointmentStatusLabels[myStatus] || myStatus}
                                     </span>
                                   )}
                                 </div>
                               </td>
                               <td className="tw-text-right">
-                                {myStatus === "PENDING" && appt ? (
+                                {canCancel && appt ? (
                                   <button
-                                    className="tw-btn tw-btn-secondary"
+                                    className="tw-btn tw-btn-danger"
                                     onClick={() => onCancel(appt.id)}
-                                    disabled={cancelingId === appt.id}
+                                    disabled={canceling}
                                   >
-                                    {cancelingId === appt.id ? "Cancelando..." : "Cancelar"}
+                                    {canceling ? "Cancelando..." : "Cancelar"}
                                   </button>
+                                ) : myStatus === "CANCELED" ? (
+                                  <span className={appointmentBadgeClass(appt.status)}>Cancelado</span>
                                 ) : (
                                   <button
                                     className="tw-btn tw-btn-primary"
@@ -612,25 +658,27 @@ export default function AgendaPage({ user }) {
                         <div key={appt.id} className="tw-flex tw-justify-between tw-items-center tw-gap-3">
                           <div className="tw-flex tw-flex-col tw-gap-1">
                             <span className="tw-text-sm tw-font-semibold tw-text-slate-900">
-                              {fmtDT(appt.slotStartsAt)} – {fmtDT(appt.slotEndsAt)}
+                              {fmtDateWithWeekday(appt.slotStartsAt)} → {fmtTime(appt.slotStartsAt)} - {fmtTime(appt.slotEndsAt)}
                             </span>
                             <span className="tw-text-xs tw-text-slate-500">
                               Musicoterapeuta: {therapistLabel.name} — {therapistLabel.specialtyText}
                             </span>
                             <span className="tw-text-xs tw-text-slate-500">Paciente: {patientLabel}</span>
-                            <span className="tw-badge tw-badge-muted">
+                            <span className={appointmentBadgeClass(appt.status)}>
                               {appointmentStatusLabels[appt.status] || appt.status}
                             </span>
                           </div>
-                          {(appt.status === "PENDING" || appt.status === "CONFIRMED") && (
+                          {appt.status === "PENDING" || appt.status === "CONFIRMED" ? (
                             <button
-                              className="tw-btn tw-btn-secondary"
+                              className="tw-btn tw-btn-danger"
                               onClick={() => onCancel(appt.id)}
                               disabled={cancelingId === appt.id}
                             >
                               {cancelingId === appt.id ? "Cancelando..." : "Cancelar"}
                             </button>
-                          )}
+                          ) : appt.status === "CANCELED" ? (
+                            <span className={appointmentBadgeClass(appt.status)}>Cancelado</span>
+                          ) : null}
                         </div>
                       );
                     })

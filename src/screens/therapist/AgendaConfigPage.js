@@ -25,11 +25,29 @@ function combineDateTime(dateStr, timeStr) {
   // date: yyyy-mm-dd, time: HH:mm -> ISO
   return new Date(`${dateStr}T${timeStr}:00`).toISOString();
 }
-function fmt(dt) {
+function fmtDateWithWeekday(dt) {
   try {
-    return new Date(dt).toLocaleString();
+    const date = new Date(dt);
+    const datePart = date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+    const weekday = date.toLocaleDateString("pt-BR", { weekday: "long" });
+    return `${datePart} (${weekday})`;
   } catch {
     return dt;
+  }
+}
+function fmtTime(dt) {
+  try {
+    return new Date(dt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return dt;
+  }
+}
+function fmtRange(start, end) {
+  try {
+    const arrow = String.fromCharCode(0x2192);
+    return `${fmtDateWithWeekday(start)} ${arrow} ${fmtTime(start)} - ${fmtTime(end)}`;
+  } catch {
+    return `${start} -> ${end}`;
   }
 }
 
@@ -61,13 +79,17 @@ const styles = {
     alignItems: "center",
     gap: 12,
   },
-  tag: (color) => ({
+  tag: (color, background = "transparent") => ({
     display: "inline-block",
     fontSize: 12,
-    fontWeight: 800,
+    fontWeight: 700,
     color,
+    backgroundColor: background,
     textTransform: "uppercase",
+    padding: "4px 10px",
+    borderRadius: 999,
     marginLeft: 8,
+    letterSpacing: "0.04em",
   }),
   danger: {
     background: "#EF4444",
@@ -78,15 +100,16 @@ const styles = {
     cursor: "pointer",
   },
   secondary: {
-    background: "#111827",
-    color: "#fff",
+    background: "#fee2e2",
+    color: "#b91c1c",
     border: "none",
     borderRadius: 10,
     padding: "8px 12px",
     cursor: "pointer",
+    boxShadow: "0 8px 16px rgba(248, 113, 113, 0.2)",
   },
   success: {
-    background: "#059669",
+    background: "#22c55e",
     color: "#fff",
     border: "none",
     borderRadius: 10,
@@ -153,6 +176,14 @@ export default function AgendaConfigPage() {
 
   const pending = useMemo(() => apps.filter((a) => a.status === "PENDING"), [apps]);
   const confirmed = useMemo(() => apps.filter((a) => a.status === "CONFIRMED"), [apps]);
+  const canceled = useMemo(() =>
+    apps
+      .filter((a) => a.status === "CANCELED")
+      .slice()
+      .sort((a, b) => new Date(b.slotStartsAt).getTime() - new Date(a.slotStartsAt).getTime()),
+    [apps]
+  );
+
 
   const fallbackName = "Usuario";
   const getDisplayName = (uid) => {
@@ -273,8 +304,8 @@ export default function AgendaConfigPage() {
               <div key={appt.id} style={styles.item}>
                 <div>
                   <div style={{ fontWeight: 800, color: "#111827" }}>
-                    {fmt(appt.slotStartsAt)} → {fmt(appt.slotEndsAt)}
-                    <span style={styles.tag("#92400E")}>PENDING</span>
+                    {fmtRange(appt.slotStartsAt, appt.slotEndsAt)}
+                    <span style={styles.tag("#A16207", "#FEF9C3")}>PENDING</span>
                   </div>
                   <div style={{ color: "#6B7280", fontSize: 14 }}>Paciente: {getDisplayName(appt.patientId)}</div>
                 </div>
@@ -313,10 +344,34 @@ export default function AgendaConfigPage() {
               <div key={appt.id} style={styles.item}>
                 <div>
                   <div style={{ fontWeight: 800, color: "#111827" }}>
-                    {fmt(appt.slotStartsAt)} → {fmt(appt.slotEndsAt)}
-                    <span style={styles.tag("#065F46")}>CONFIRMED</span>
+                    {fmtRange(appt.slotStartsAt, appt.slotEndsAt)}
+                    <span style={styles.tag("#047857", "#DCFCE7")}>CONFIRMED</span>
                   </div>
                   <div style={{ color: "#6B7280", fontSize: 14 }}>Paciente: {getDisplayName(appt.patientId)}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Cancelamentos recentes */}
+      <div style={{ ...styles.card, marginTop: 18 }}>
+        <h3 style={{ marginTop: 0, marginBottom: 8 }}>Cancelamentos recentes</h3>
+        {canceled.length === 0 ? (
+          <div style={{ color: "#6B7280" }}>Nenhum cancelamento registrado.</div>
+        ) : (
+          <div style={styles.list}>
+            {canceled.map((appt) => (
+              <div key={appt.id} style={styles.item}>
+                <div>
+                  <div style={{ fontWeight: 800, color: "#111827" }}>
+                    {fmtRange(appt.slotStartsAt, appt.slotEndsAt)}
+                    <span style={styles.tag("#B91C1C", "#FEE2E2")}>CANCELED</span>
+                  </div>
+                  <div style={{ color: "#6B7280", fontSize: 14 }}>
+                    Paciente {getDisplayName(appt.patientId)} cancelou este agendamento.
+                  </div>
                 </div>
               </div>
             ))}
@@ -335,10 +390,11 @@ export default function AgendaConfigPage() {
               <div key={slot.id} style={styles.item}>
                 <div>
                   <div style={{ fontWeight: 800, color: "#111827" }}>
-                    {fmt(slot.startsAt)} → {fmt(slot.endsAt)}
+                    {fmtRange(slot.startsAt, slot.endsAt)}
                     <span
                       style={styles.tag(
-                        slot.status === "OPEN" ? "#065F46" : slot.status === "HELD" ? "#92400E" : "#1D4ED8"
+                        slot.status === "OPEN" ? "#1D4ED8" : slot.status === "HELD" ? "#A16207" : slot.status === "BOOKED" ? "#047857" : "#374151",
+                        slot.status === "OPEN" ? "#DBEAFE" : slot.status === "HELD" ? "#FEF9C3" : slot.status === "BOOKED" ? "#DCFCE7" : "#E5E7EB"
                       )}
                     >
                       {slot.status}
@@ -401,3 +457,4 @@ export default function AgendaConfigPage() {
     </div>
   );
 }
+
