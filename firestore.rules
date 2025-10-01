@@ -1,0 +1,72 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isTherapistOwner(therapistId) {
+      return isAuthenticated() && request.auth.uid == therapistId;
+    }
+
+    function isSlotRequester() {
+      return isAuthenticated() && (
+        request.auth.uid == resource.data.requestedBy ||
+        request.auth.uid == request.resource.data.requestedBy
+      );
+    }
+
+    match /therapists/{therapistId} {
+      allow read: if isAuthenticated();
+      allow write: if isTherapistOwner(therapistId);
+    }
+
+    match /therapists/{therapistId}/slots/{slotId} {
+      allow read: if isAuthenticated();
+
+      allow create: if isTherapistOwner(therapistId)
+        && request.resource.data.therapistId == therapistId;
+
+      allow update: if (
+          isTherapistOwner(therapistId) ||
+          (isSlotRequester() && request.resource.data.therapistId == therapistId)
+        );
+
+      allow delete: if isTherapistOwner(therapistId);
+    }
+
+    match /{path=**}/slots/{slotId} {
+      allow read: if isAuthenticated();
+    }
+
+    function isAppointmentParticipant() {
+      return isAuthenticated() && (
+        request.auth.uid == resource.data.patientId ||
+        request.auth.uid == resource.data.therapistId
+      );
+    }
+
+    function isAppointmentParticipantFromRequest() {
+      return isAuthenticated() && (
+        request.auth.uid == request.resource.data.patientId ||
+        request.auth.uid == request.resource.data.therapistId
+      );
+    }
+
+    match /appointments/{appointmentId} {
+      allow read: if isAppointmentParticipant();
+      allow create: if isAppointmentParticipantFromRequest();
+      allow update: if isAppointmentParticipant();
+      allow delete: if isAppointmentParticipant();
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
