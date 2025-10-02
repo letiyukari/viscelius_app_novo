@@ -2,13 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../../firebase';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import Icons from '../common/Icons';
-import AddPatientModal from './AddPatientModal';
+// O AddPatientModal foi removido daqui
 import Notification from '../common/Notification';
 import PatientDetailModal from './PatientDetailModal';
 
 const DashboardPage = ({ user }) => { 
     const therapistUid = user?.uid;
-    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    // O estado 'isAddModalOpen' foi removido daqui
     const [viewingPatient, setViewingPatient] = useState(null);
     const [patients, setPatients] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -51,6 +51,7 @@ const DashboardPage = ({ user }) => {
         pageContainer: { padding: '2rem 3.5rem', backgroundColor: '#F9FAFB', fontFamily: '"Inter", sans-serif', minHeight: '100vh' },
         header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' },
         title: { color: '#1F2937', fontSize: '2.2rem', fontWeight: '700', margin: '0' },
+        // Estilo 'addButton' não é mais usado, mas pode ser mantido para uso futuro
         addButton: { backgroundColor: '#8B5CF6', color: 'white', border: 'none', padding: '12px 20px', borderRadius: '12px', cursor: 'pointer', fontWeight: '600', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px', transition: 'background-color 0.3s' },
         sectionTitle: { fontSize: '1.5rem', color: '#1F2937', fontWeight: '600', marginBottom: '1.5rem' },
         patientGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' },
@@ -67,7 +68,7 @@ const DashboardPage = ({ user }) => {
     return (
         <>
             <div style={styles.pageContainer}>
-                <AddPatientModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} therapistId={user?.uid} setNotification={setNotification} />
+                {/* O MODAL AddPatientModal FOI REMOVIDO DAQUI */}
                 <PatientDetailModal 
                     patient={viewingPatient} 
                     onClose={() => setViewingPatient(null)} 
@@ -76,10 +77,7 @@ const DashboardPage = ({ user }) => {
                 
                 <header style={styles.header}>
                     <h1 style={styles.title}>Painel do Terapeuta</h1>
-                    <button style={styles.addButton} onClick={() => setIsAddModalOpen(true)}>
-                        <Icons.PlusIcon />
-                        <span>Adicionar Paciente</span>
-                    </button>
+                    {/* O BOTÃO "Adicionar Paciente" FOI REMOVIDO DAQUI */}
                 </header>
 
                 <h2 style={styles.sectionTitle}>Meus Pacientes</h2>
@@ -104,7 +102,7 @@ const DashboardPage = ({ user }) => {
                                     </div>
                                 </div>
                             </div>
-                        )) : <p>Nenhum paciente encontrado. Clique em "+ Adicionar Paciente" para começar.</p>}
+                        )) : <p>Nenhum paciente vinculado foi encontrado.</p> /* MENSAGEM ATUALIZADA AQUI */}
                     </div>
                 )}
             </div>
