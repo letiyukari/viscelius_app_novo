@@ -23,11 +23,13 @@ const slotStatusText = {
   BOOKED: "Confirmado",
 };
 const appointmentStatusLabels = {
-  PENDING: "Pendente",
-  CONFIRMED: "Confirmado",
-  DECLINED: "Recusado",
-  CANCELED: "Cancelado",
+  pending: "Pendente",
+  confirmed: "Confirmado",
+  declined: "Recusado",
+  canceled: "Cancelado",
 };
+
+const normalizeStatus = (status) => String(status || "").toLowerCase();
 
 const slotBadgeClass = (status) => {
   switch (status) {
@@ -43,14 +45,14 @@ const slotBadgeClass = (status) => {
 };
 
 const appointmentBadgeClass = (status) => {
-  switch (status) {
-    case "PENDING":
+  switch (normalizeStatus(status)) {
+    case "pending":
       return "tw-badge tw-badge-pending";
-    case "CONFIRMED":
+    case "confirmed":
       return "tw-badge tw-badge-confirmed";
-    case "CANCELED":
+    case "canceled":
       return "tw-badge tw-badge-canceled";
-    case "DECLINED":
+    case "declined":
       return "tw-badge tw-badge-muted";
     default:
       return "tw-badge tw-badge-muted";
@@ -398,13 +400,14 @@ export default function AgendaPage({ user }) {
     if (!confirmCancel) return;
 
     const previous = appointments.find((appt) => appt.id === apptId) || null;
+    const previousStatus = normalizeStatus(previous?.status);
 
     try {
       setCancelingId(apptId);
       setSlotsError("");
-      if (previous && previous.status !== "CANCELED") {
+      if (previous && previousStatus !== "canceled") {
         setAppointments((prev) =>
-          prev.map((appt) => (appt.id === apptId ? { ...appt, status: "CANCELED" } : appt))
+          prev.map((appt) => (appt.id === apptId ? { ...appt, status: "canceled" } : appt))
         );
       }
       await cancelAppointment(apptId);
@@ -571,9 +574,11 @@ export default function AgendaPage({ user }) {
                         {currentSlots.map((slot) => {
                           const appt = appointmentsBySlot[slot.id];
                           const myStatus = appt?.status;
+                          const normalizedMyStatus = normalizeStatus(myStatus);
                           const requesting = requestingSlotId === slot.id;
                           const canceling = appt && cancelingId === appt.id;
-                          const canCancel = myStatus === "PENDING" || myStatus === "CONFIRMED";
+                          const canCancel =
+                            normalizedMyStatus === "pending" || normalizedMyStatus === "confirmed";
                           const disabled = (slot.status !== "OPEN" && !myStatus) || requesting;
                           const actionLabel = requesting
                             ? "Solicitando..."
@@ -594,7 +599,9 @@ export default function AgendaPage({ user }) {
                                   </span>
                                   {myStatus && (
                                     <span className={appointmentBadgeClass(myStatus)}>
-                                      Minha solicitação: {appointmentStatusLabels[myStatus] || myStatus}
+                                      Minha solicitação:{" "}
+                                      {appointmentStatusLabels[normalizedMyStatus] ||
+                                        normalizedMyStatus.toUpperCase()}
                                     </span>
                                   )}
                                 </div>
@@ -608,7 +615,7 @@ export default function AgendaPage({ user }) {
                                   >
                                     {canceling ? "Cancelando..." : "Cancelar"}
                                   </button>
-                                ) : myStatus === "CANCELED" ? (
+                                ) : normalizedMyStatus === "canceled" ? (
                                   <span className={appointmentBadgeClass(appt.status)}>Cancelado</span>
                                 ) : (
                                   <button
@@ -654,6 +661,7 @@ export default function AgendaPage({ user }) {
                         uid: appt.therapistId,
                         profile: profiles[appt.therapistId],
                       });
+                      const normalizedStatus = normalizeStatus(appt.status);
                       return (
                         <div key={appt.id} className="tw-flex tw-justify-between tw-items-center tw-gap-3">
                           <div className="tw-flex tw-flex-col tw-gap-1">
@@ -661,14 +669,14 @@ export default function AgendaPage({ user }) {
                               {fmtDateWithWeekday(appt.slotStartsAt)} → {fmtTime(appt.slotStartsAt)} - {fmtTime(appt.slotEndsAt)}
                             </span>
                             <span className="tw-text-xs tw-text-slate-500">
-                              Musicoterapeuta: {therapistLabel.name} — {therapistLabel.specialtyText}
+                              Musicoterapeuta: {therapistLabel.name} - {therapistLabel.specialtyText}
                             </span>
                             <span className="tw-text-xs tw-text-slate-500">Paciente: {patientLabel}</span>
                             <span className={appointmentBadgeClass(appt.status)}>
-                              {appointmentStatusLabels[appt.status] || appt.status}
+                              {appointmentStatusLabels[normalizedStatus] || normalizedStatus.toUpperCase()}
                             </span>
                           </div>
-                          {appt.status === "PENDING" || appt.status === "CONFIRMED" ? (
+                          {normalizedStatus === "pending" || normalizedStatus === "confirmed" ? (
                             <button
                               className="tw-btn tw-btn-danger"
                               onClick={() => onCancel(appt.id)}
@@ -676,7 +684,7 @@ export default function AgendaPage({ user }) {
                             >
                               {cancelingId === appt.id ? "Cancelando..." : "Cancelar"}
                             </button>
-                          ) : appt.status === "CANCELED" ? (
+                          ) : normalizedStatus === "canceled" ? (
                             <span className={appointmentBadgeClass(appt.status)}>Cancelado</span>
                           ) : null}
                         </div>

@@ -118,6 +118,10 @@ const styles = {
   },
 };
 
+const normalizeStatus = (value) => String(value || "").toLowerCase();
+const statusEquals = (value, target) => normalizeStatus(value) === target;
+const formatStatusTag = (value) => normalizeStatus(value).toUpperCase() || "";
+
 export default function AgendaConfigPage() {
   const { user } = useAuth(); // ja usado no seu app
   const therapistId = user?.uid || user?.id;
@@ -174,15 +178,14 @@ export default function AgendaConfigPage() {
     return () => unsub && unsub();
   }, [therapistId]);
 
-  const pending = useMemo(() => apps.filter((a) => a.status === "PENDING"), [apps]);
-  const confirmed = useMemo(() => apps.filter((a) => a.status === "CONFIRMED"), [apps]);
-  const canceled = useMemo(() =>
-    apps
-      .filter((a) => a.status === "CANCELED")
+  const pending = useMemo(() => apps.filter((a) => statusEquals(a.status, "pending")), [apps]);
+  const confirmed = useMemo(() => apps.filter((a) => statusEquals(a.status, "confirmed")), [apps]);
+  const canceled = useMemo(() => {
+    return apps
+      .filter((a) => statusEquals(a.status, "canceled"))
       .slice()
-      .sort((a, b) => new Date(b.slotStartsAt).getTime() - new Date(a.slotStartsAt).getTime()),
-    [apps]
-  );
+      .sort((a, b) => new Date(b.slotStartsAt).getTime() - new Date(a.slotStartsAt).getTime());
+  }, [apps]);
 
 
   const fallbackName = "Usuario";
@@ -226,22 +229,23 @@ export default function AgendaConfigPage() {
   }
 
   function applyOptimisticStatus(apptId, nextStatus, action) {
+    const normalizedStatus = normalizeStatus(nextStatus);
     let previous = null;
     setApps((prev) =>
       prev.map((appt) => {
         if (appt.id === apptId) {
           previous = appt;
-          return { ...appt, status: nextStatus };
+          return { ...appt, status: normalizedStatus };
         }
         return appt;
       })
     );
 
-    updateActionState(apptId, { loading: true, error: false, status: nextStatus });
+    updateActionState(apptId, { loading: true, error: false, status: normalizedStatus });
 
     action()
       .then(() => {
-        updateActionState(apptId, { loading: false, status: nextStatus });
+        updateActionState(apptId, { loading: false, status: normalizedStatus });
       })
       .catch((error) => {
         setApps((prev) =>
@@ -253,10 +257,10 @@ export default function AgendaConfigPage() {
   }
 
   const handleApprove = (apptId) =>
-    applyOptimisticStatus(apptId, "CONFIRMED", () => approveAppointment(apptId));
+    applyOptimisticStatus(apptId, "confirmed", () => approveAppointment(apptId));
 
   const handleDecline = (apptId) =>
-    applyOptimisticStatus(apptId, "DECLINED", () => declineAppointment(apptId));
+    applyOptimisticStatus(apptId, "declined", () => declineAppointment(apptId));
 
   return (
     <div style={styles.page}>
@@ -305,7 +309,9 @@ export default function AgendaConfigPage() {
                 <div>
                   <div style={{ fontWeight: 800, color: "#111827" }}>
                     {fmtRange(appt.slotStartsAt, appt.slotEndsAt)}
-                    <span style={styles.tag("#A16207", "#FEF9C3")}>PENDING</span>
+                    <span style={styles.tag("#A16207", "#FEF9C3")}>
+                      {formatStatusTag(appt.status) || "PENDING"}
+                    </span>
                   </div>
                   <div style={{ color: "#6B7280", fontSize: 14 }}>Paciente: {getDisplayName(appt.patientId)}</div>
                 </div>
@@ -345,7 +351,9 @@ export default function AgendaConfigPage() {
                 <div>
                   <div style={{ fontWeight: 800, color: "#111827" }}>
                     {fmtRange(appt.slotStartsAt, appt.slotEndsAt)}
-                    <span style={styles.tag("#047857", "#DCFCE7")}>CONFIRMED</span>
+                    <span style={styles.tag("#047857", "#DCFCE7")}>
+                      {formatStatusTag(appt.status) || "CONFIRMED"}
+                    </span>
                   </div>
                   <div style={{ color: "#6B7280", fontSize: 14 }}>Paciente: {getDisplayName(appt.patientId)}</div>
                 </div>
@@ -367,7 +375,9 @@ export default function AgendaConfigPage() {
                 <div>
                   <div style={{ fontWeight: 800, color: "#111827" }}>
                     {fmtRange(appt.slotStartsAt, appt.slotEndsAt)}
-                    <span style={styles.tag("#B91C1C", "#FEE2E2")}>CANCELED</span>
+                    <span style={styles.tag("#B91C1C", "#FEE2E2")}>
+                      {formatStatusTag(appt.status) || "CANCELED"}
+                    </span>
                   </div>
                   <div style={{ color: "#6B7280", fontSize: 14 }}>
                     Paciente {getDisplayName(appt.patientId)} cancelou este agendamento.
