@@ -17,6 +17,7 @@ import {
   where,
   orderBy,
   serverTimestamp,
+  Timestamp,
 } from "firebase/firestore";
 import { db } from "../firebase";
 
@@ -34,7 +35,8 @@ import { db } from "../firebase";
  * appointments/{appointmentId} = {
  *   therapistId, patientId,
  *   slotPath, slotStartsAt, slotEndsAt,
- *   status: 'PENDING' | 'CONFIRMED' | 'DECLINED' | 'CANCELED',
+ *   startTime: Timestamp, endTime: Timestamp,
+ *   status: 'pending' | 'confirmed' | 'declined' | 'canceled',
  *   createdAt, updatedAt
  * }
  */
@@ -142,13 +144,18 @@ export async function requestAppointment({ patientId, therapistId, slotId }) {
     updatedAt: serverTimestamp(),
   });
 
+  const startTime = coerceTimestamp(null, slot.startsAt);
+  const endTime = coerceTimestamp(null, slot.endsAt);
+
   const apptRef = await addDoc(collection(db, "appointments"), {
     therapistId,
     patientId,
     slotPath: slotRef.path,
     slotStartsAt: slot.startsAt,
     slotEndsAt: slot.endsAt,
-    status: "PENDING",
+    startTime,
+    endTime,
+    status: normalizeAppointmentStatus("PENDING"),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -163,7 +170,10 @@ export async function approveAppointment(appointmentId) {
   if (!apptSnap.exists()) throw new Error("Agendamento não encontrado");
   const appt = apptSnap.data();
 
-  await updateDoc(apptRef, { status: "CONFIRMED", updatedAt: serverTimestamp() });
+  await updateDoc(apptRef, {
+    status: normalizeAppointmentStatus("CONFIRMED"),
+    updatedAt: serverTimestamp(),
+  });
 
   const slotRef = docFromPath(appt.slotPath);
   await updateDoc(slotRef, { status: "BOOKED", updatedAt: serverTimestamp() });
@@ -176,7 +186,10 @@ export async function declineAppointment(appointmentId) {
   if (!apptSnap.exists()) throw new Error("Agendamento não encontrado");
   const appt = apptSnap.data();
 
-  await updateDoc(apptRef, { status: "DECLINED", updatedAt: serverTimestamp() });
+  await updateDoc(apptRef, {
+    status: normalizeAppointmentStatus("DECLINED"),
+    updatedAt: serverTimestamp(),
+  });
 
   const slotRef = docFromPath(appt.slotPath);
   await updateDoc(slotRef, {
@@ -193,7 +206,10 @@ export async function cancelAppointment(appointmentId) {
   if (!apptSnap.exists()) throw new Error("Agendamento não encontrado");
   const appt = apptSnap.data();
 
-  await updateDoc(apptRef, { status: "CANCELED", updatedAt: serverTimestamp() });
+  await updateDoc(apptRef, {
+    status: normalizeAppointmentStatus("CANCELED"),
+    updatedAt: serverTimestamp(),
+  });
 
   const slotRef = docFromPath(appt.slotPath);
   await updateDoc(slotRef, {
@@ -209,7 +225,7 @@ export async function listAppointmentsByUser(userId, role) {
   const field = role === "therapist" ? "therapistId" : "patientId";
   const qy = query(base, where(field, "==", userId), orderBy("slotStartsAt", "asc"));
   const snap = await getDocs(qy);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  return snap.docs.map(mapAppointmentSnapshot);
 }
 
 /** streams em tempo real */
@@ -217,7 +233,7 @@ export function subscribeTherapistAppointments(therapistId, cb) {
   const base = collection(db, "appointments");
   const qy = query(base, where("therapistId", "==", therapistId), orderBy("createdAt", "desc"));
   return onSnapshot(qy, (snap) => {
-    const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const data = snap.docs.map(mapAppointmentSnapshot);
     cb(data);
   });
 }
@@ -226,7 +242,7 @@ export function subscribePatientAppointments(patientId, cb) {
   const base = collection(db, "appointments");
   const qy = query(base, where("patientId", "==", patientId), orderBy("createdAt", "desc"));
   return onSnapshot(qy, (snap) => {
-    const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const data = snap.docs.map(mapAppointmentSnapshot);
     cb(data);
   });
 }
@@ -262,4 +278,44 @@ function toIso(v) {
 
 function docFromPath(path) {
   return doc(db, path);
+}
+
+function normalizeAppointmentStatus(raw) {
+  const value = String(raw || "").toLowerCase();
+  switch (value) {
+    case "pending":
+    case "confirmed":
+    case "canceled":
+    case "declined":
+      return value;
+    default:
+      return "pending";
+  }
+}
+
+function mapAppointmentSnapshot(docSnap) {
+  const data = docSnap.data() || {};
+  const startTime = coerceTimestamp(data.startTime, data.slotStartsAt);
+  const endTime = coerceTimestamp(data.endTime, data.slotEndsAt);
+  return {
+    id: docSnap.id,
+    ...data,
+    status: normalizeAppointmentStatus(data.status),
+    startTime,
+    endTime,
+  };
+}
+
+function coerceTimestamp(value, fallbackIso) {
+  if (value && typeof value.toDate === "function") return value;
+  const source = value ?? fallbackIso;
+  if (!source) return undefined;
+  const date =
+    source instanceof Date
+      ? source
+      : typeof source === "string"
+      ? new Date(source)
+      : null;
+  if (!date || Number.isNaN(date.getTime())) return undefined;
+  return Timestamp.fromDate(date);
 }

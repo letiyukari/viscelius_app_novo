@@ -1,9 +1,11 @@
 // src/screens/patient/HomePage.js
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { db } from '../../firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import Icons from '../../components/common/Icons';
 import BackButton from '../../components/common/BackButton';
+import NextSessionCard from '../../components/patient/NextSessionCard';
 
 function niceNameFromEmail(email) {
   if (!email) return '';
@@ -15,6 +17,7 @@ function niceNameFromEmail(email) {
 
 const HomePage = ({ user }) => {
   const [userData, setUserData] = useState(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     let live = true;
@@ -39,17 +42,6 @@ const HomePage = ({ user }) => {
     backWrap: { marginBottom: '1rem' },
     helloSmall: { color: '#6B7280', margin: '0 0 .5rem 0' },
     helloBig: { color: '#1F2937', fontSize: '2.5rem', fontWeight: 800, margin: 0, lineHeight: 1.2 },
-    sessionCard: {
-      marginTop: '1.5rem', background: '#6D28D9', color: '#fff', borderRadius: 20,
-      padding: '2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between'
-    },
-    sessionTitle: { margin: 0, fontWeight: 700, opacity: .9 },
-    sessionWhen: { margin: '.5rem 0 0 0', fontSize: '2.4rem', fontWeight: 800, letterSpacing: .2 },
-    sessionWith: { margin: '.25rem 0 0 0', opacity: .9 },
-    sessionBtn: {
-      background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.25)',
-      color: '#fff', padding: '10px 16px', borderRadius: 10, cursor: 'pointer', fontWeight: 600
-    },
     grid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1.5rem' },
     card: { background: '#fff', border: '1px solid #E5E7EB', borderRadius: 16, padding: '1.25rem', display: 'flex', gap: 12, alignItems: 'center' },
     cardTitle: { margin: 0, fontWeight: 700, color: '#111827' },
@@ -69,15 +61,12 @@ const HomePage = ({ user }) => {
         <h1 style={styles.helloBig}>{displayName}</h1>
       </header>
 
-      {/* Banner de próxima sessão (mock) */}
-      <div style={styles.sessionCard}>
-        <div>
-          <p style={styles.sessionTitle}>Sua Próxima Sessão</p>
-          <h2 style={styles.sessionWhen}>28 de Agosto, 2025 às 14:30</h2>
-          <p style={styles.sessionWith}>com Dr. Carlos Mendes</p>
-        </div>
-        <button style={styles.sessionBtn}>Ver Detalhes</button>
-      </div>
+      <NextSessionCard
+        patientId={user?.uid}
+        onViewDetails={() => navigate('/agendamentos')}
+        onOpenAgenda={() => navigate('/agendamentos')}
+        onSchedule={() => navigate('/agendamentos')}
+      />
 
       {/* Acesso rápido */}
       <h3 style={styles.sectionTitle}>Acesso Rápido</h3>
