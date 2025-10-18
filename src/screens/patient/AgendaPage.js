@@ -105,6 +105,12 @@ const fmtDuration = (startIso, endIso) => {
   return `${minutes} min`;
 };
 
+const toMillis = (value) => {
+  if (!value) return Number.NaN;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? Number.NaN : date.getTime();
+};
+
 const ymd = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
@@ -167,6 +173,47 @@ export default function AgendaPage({ user }) {
   const [cancelingId, setCancelingId] = useState(null);
 
   const [profiles, setProfiles] = useState({});
+  const sortedAppointments = useMemo(
+    () =>
+      appointments
+        .slice()
+        .sort((a, b) => toMillis(a.slotStartsAt) - toMillis(b.slotStartsAt)),
+    [appointments]
+  );
+
+  const upcomingAppointments = useMemo(() => {
+    const now = Date.now() - 5 * 60 * 1000;
+    return sortedAppointments.filter((appt) => {
+      const status = normalizeStatus(appt.status);
+      if (status !== "pending" && status !== "confirmed") return false;
+      const endMs = toMillis(appt.slotEndsAt || appt.endTime);
+      if (Number.isNaN(endMs)) return true;
+      return endMs >= now;
+    });
+  }, [sortedAppointments]);
+
+  const otherUpcomingAppointments = useMemo(() => {
+    const now = Date.now() - 5 * 60 * 1000;
+    return sortedAppointments.filter((appt) => {
+      const status = normalizeStatus(appt.status);
+      if (status === "pending" || status === "confirmed") return false;
+      const endMs = toMillis(appt.slotEndsAt || appt.endTime);
+      if (Number.isNaN(endMs)) return false;
+      return endMs >= now;
+    });
+  }, [sortedAppointments]);
+
+  const pastAppointments = useMemo(() => {
+    const now = Date.now() - 5 * 60 * 1000;
+    return sortedAppointments
+      .filter((appt) => {
+        const endMs = toMillis(appt.slotEndsAt || appt.endTime);
+        if (Number.isNaN(endMs)) return false;
+        return endMs < now;
+      })
+      .sort((a, b) => toMillis(b.slotStartsAt) - toMillis(a.slotStartsAt))
+      .slice(0, 12);
+  }, [sortedAppointments]);
 
   useEffect(() => {
     if (!patientId) return;
@@ -323,7 +370,7 @@ export default function AgendaPage({ user }) {
         (error) => {
           console.error(error);
           if (!active) return;
-          setSlotsError("Nao foi possivel carregar os horarios deste musicoterapeuta.");
+          setSlotsError("Não foi possível carregar os horários deste musicoterapeuta.");
           setSlotsLoading(false);
         }
       );
@@ -416,7 +463,7 @@ export default function AgendaPage({ user }) {
       if (previous) {
         setAppointments((prev) => prev.map((appt) => (appt.id === apptId ? previous : appt)));
       }
-      const message = error?.message || "Nao foi possivel cancelar este agendamento.";
+      const message = error?.message || "Não foi possível cancelar este agendamento.";
       setSlotsError(message);
       alert(message);
     } finally {
@@ -699,4 +746,10 @@ export default function AgendaPage({ user }) {
     </div>
   );
 }
+
+
+
+
+
+
 

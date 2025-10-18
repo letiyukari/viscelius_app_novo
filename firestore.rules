@@ -53,11 +53,83 @@ service cloud.firestore {
       );
     }
 
+    function isAppointmentTherapist() {
+      return isAuthenticated() && (
+        request.auth.uid == resource.data.therapistId ||
+        (resource.data.therapistId == null && request.resource.data.therapistId == request.auth.uid)
+      );
+    }
+
+    function isAppointmentPatient() {
+      return isAuthenticated() && request.auth.uid == resource.data.patientId;
+    }
+
+    function appointmentMeetingFieldsUnchanged() {
+      return request.resource.data.meetingProvider == resource.data.meetingProvider
+        && request.resource.data.meetingRoom == resource.data.meetingRoom
+        && request.resource.data.meetingUrl == resource.data.meetingUrl
+        && request.resource.data.meetingConfig == resource.data.meetingConfig
+        && request.resource.data.meetingExpiresAt == resource.data.meetingExpiresAt;
+    }
+
+    function appointmentMeetingFieldsCleared() {
+      return request.resource.data.meetingProvider == null
+        && request.resource.data.meetingRoom == null
+        && request.resource.data.meetingUrl == null
+        && request.resource.data.meetingConfig == null
+        && request.resource.data.meetingExpiresAt == null;
+    }
+
+    function appointmentHistoryFieldsUnchanged() {
+      return request.resource.data.historyId == resource.data.historyId
+        && request.resource.data.completedAt == resource.data.completedAt;
+    }
+
+    function appointmentStatusUnchanged() {
+      return request.resource.data.status == resource.data.status
+        && request.resource.data.sessionStatus == resource.data.sessionStatus;
+    }
+
+    function appointmentPatientCancelling() {
+      return request.resource.data.status == 'canceled'
+        && request.resource.data.sessionStatus == 'canceled';
+    }
+
+    function isConsultationParticipant() {
+      return isAuthenticated() && (
+        request.auth.uid == resource.data.patientId ||
+        request.auth.uid == resource.data.therapistId
+      );
+    }
+
+    function isConsultationTherapist() {
+      return isAuthenticated() && request.auth.uid == resource.data.therapistId;
+    }
+
+    function isConsultationTherapistFromRequest() {
+      return isAuthenticated() && request.auth.uid == request.resource.data.therapistId;
+    }
+
     match /appointments/{appointmentId} {
       allow read: if isAppointmentParticipant();
       allow create: if isAppointmentParticipantFromRequest();
-      allow update: if isAppointmentParticipant();
+      allow update: if isAppointmentParticipant() && (
+        isAppointmentTherapist() ||
+        (
+          isAppointmentPatient() &&
+          appointmentHistoryFieldsUnchanged() &&
+          (appointmentStatusUnchanged() || appointmentPatientCancelling()) &&
+          (appointmentMeetingFieldsUnchanged() || appointmentMeetingFieldsCleared())
+        )
+      );
       allow delete: if isAppointmentParticipant();
+    }
+
+    match /consultations/{consultationId} {
+      allow read: if isConsultationParticipant();
+      allow create: if isConsultationTherapistFromRequest();
+      allow update: if isConsultationTherapist();
+      allow delete: if isConsultationTherapist();
     }
 
     match /users/{userId} {

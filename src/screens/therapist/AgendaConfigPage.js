@@ -1,8 +1,9 @@
-// src/screens/therapist/AgendaConfigPage.js
+﻿// src/screens/therapist/AgendaConfigPage.js
 // Pagina do TERAPEUTA para publicar/gerenciar disponibilidade (slots)
 // Inclui aprovacao/recusa de solicitacoes (HELD) e exclusao de slots OPEN.
 
 import React, { useEffect, useMemo, useState } from "react";
+import { doc, getDoc } from "firebase/firestore";
 import {
   publishSlots,
   subscribeSlots,
@@ -10,9 +11,12 @@ import {
   approveAppointment,
   declineAppointment,
   subscribeTherapistAppointments,
+  completeAppointment,
 } from "../../services/agenda";
 import { useAuth } from "../../context/AuthContext";
 import { getMultipleUserProfiles } from "../../services/usersService";
+import RecordConsultationModal from "../../components/therapist/RecordConsultationModal";
+import { db } from "../../firebase";
 
 // ===== helpers de data =====
 function pad(v, n = 2) {
@@ -116,6 +120,42 @@ const styles = {
     padding: "8px 12px",
     cursor: "pointer",
   },
+  recordButton: {
+    background: "#6366F1",
+    color: "#fff",
+    border: "none",
+    borderRadius: 10,
+    padding: "8px 12px",
+    cursor: "pointer",
+    fontWeight: 600,
+  },
+  feedbackBox: {
+    padding: "0.9rem 1.2rem",
+    borderRadius: 12,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "0.75rem",
+  },
+  feedbackSuccess: {
+    background: "#DCFCE7",
+    color: "#047857",
+    border: "1px solid #86EFAC",
+  },
+  feedbackError: {
+    background: "#FEE2E2",
+    color: "#B91C1C",
+    border: "1px solid #FCA5A5",
+  },
+  feedbackClose: {
+    background: "transparent",
+    border: "none",
+    color: "inherit",
+    fontSize: "1.1rem",
+    fontWeight: 700,
+    cursor: "pointer",
+    lineHeight: 1,
+  },
 };
 
 const normalizeStatus = (value) => String(value || "").toLowerCase();
@@ -141,6 +181,8 @@ export default function AgendaConfigPage() {
   const [apps, setApps] = useState([]);
   const [profiles, setProfiles] = useState({});
   const [actionState, setActionState] = useState({});
+  const [recordingAppointment, setRecordingAppointment] = useState(null);
+  const [feedback, setFeedback] = useState(null);
 
   useEffect(() => {
     if (!therapistId) return;
@@ -252,7 +294,7 @@ export default function AgendaConfigPage() {
           prev.map((appt) => (appt.id === apptId && previous ? previous : appt))
         );
         updateActionState(apptId, { loading: false, error: true });
-        alert(error?.message || "Não foi possível concluir a ação. Tente novamente.");
+        alert(error?.message || "NÃ£o foi possÃ­vel concluir a aÃ§Ã£o. Tente novamente.");
       });
   }
 
@@ -262,12 +304,81 @@ export default function AgendaConfigPage() {
   const handleDecline = (apptId) =>
     applyOptimisticStatus(apptId, "declined", () => declineAppointment(apptId));
 
+  const handleRecordConsultation = async (appt) => {
+    setFeedback(null);
+    if (!appt?.id) {
+      setRecordingAppointment(appt);
+      return;
+    }
+    let next = appt;
+    try {
+      const snap = await getDoc(doc(db, "appointments", appt.id));
+      if (snap.exists()) {
+        const fresh = snap.data();
+        next = {
+          ...appt,
+          ...fresh,
+          meetingUrl: fresh.meetingUrl ?? appt.meetingUrl ?? null,
+          meetingRoom: fresh.meetingRoom ?? appt.meetingRoom ?? null,
+          meetingProvider: fresh.meetingProvider ?? appt.meetingProvider ?? null,
+          meetingExpiresAt: fresh.meetingExpiresAt ?? appt.meetingExpiresAt ?? null,
+        };
+      }
+    } catch (error) {
+      console.error("handleRecordConsultation", error);
+    }
+    setRecordingAppointment(next);
+  };
+
+  const handleConsultationSave = async (payload) => {
+    if (!recordingAppointment?.id) {
+      throw new Error("Nenhum agendamento selecionado.");
+    }
+    try {
+      await completeAppointment(recordingAppointment.id, {
+        ...payload,
+        updatedBy: therapistId,
+      });
+      setFeedback({ type: "success", message: "SessÃ£o registrada no histórico do paciente." });
+      setRecordingAppointment(null);
+    } catch (error) {
+      console.error("completeAppointment", error);
+      setFeedback({
+        type: "error",
+        message: error?.message || "NÃ£o foi possÃ­vel salvar a sessÃ£o.",
+      });
+      throw error;
+    }
+  };
+
   return (
     <div style={styles.page}>
+      <RecordConsultationModal
+        open={Boolean(recordingAppointment)}
+        appointment={recordingAppointment}
+        patientName={
+          recordingAppointment ? getDisplayName(recordingAppointment.patientId) : ""
+        }
+        onClose={() => setRecordingAppointment(null)}
+        onSave={handleConsultationSave}
+      />
       <h1 style={styles.title}>Configurar Agenda</h1>
       <p style={styles.subtitle}>
         Publique seus horarios disponiveis. Gerencie solicitacoes dos pacientes e confirme ou recuse.
       </p>
+      {feedback ? (
+        <div
+          style={{
+            ...styles.feedbackBox,
+            ...(feedback.type === "error" ? styles.feedbackError : styles.feedbackSuccess),
+          }}
+        >
+          <span>{feedback.message}</span>
+          <button type="button" style={styles.feedbackClose} onClick={() => setFeedback(null)}>
+            Ã—
+          </button>
+        </div>
+      ) : null}
 
       {/* Formulario de publicacao */}
       <div style={styles.card}>
@@ -299,9 +410,9 @@ export default function AgendaConfigPage() {
 
       {/* Solicitacoes pendentes (PENDING) */}
       <div style={{ ...styles.card, marginTop: 18 }}>
-        <h3 style={{ marginTop: 0, marginBottom: 8 }}>Solicitações pendentes</h3>
+        <h3 style={{ marginTop: 0, marginBottom: 8 }}>SolicitaÃ§Ãµes pendentes</h3>
         {pending.length === 0 ? (
-          <div style={{ color: "#6B7280" }}>Nenhuma solicitação pendente.</div>
+          <div style={{ color: "#6B7280" }}>Nenhuma solicitaÃ§Ã£o pendente.</div>
         ) : (
           <div style={styles.list}>
             {pending.map((appt) => (
@@ -341,9 +452,9 @@ export default function AgendaConfigPage() {
 
       {/* Proximos confirmados */}
       <div style={{ ...styles.card, marginTop: 18 }}>
-        <h3 style={{ marginTop: 0, marginBottom: 8 }}>Próximas sessões confirmadas</h3>
+        <h3 style={{ marginTop: 0, marginBottom: 8 }}>PrÃ³ximas sessões confirmadas</h3>
         {confirmed.length === 0 ? (
-          <div style={{ color: "#6B7280" }}>Nenhuma sessão confirmada.</div>
+          <div style={{ color: "#6B7280" }}>Nenhuma sessÃ£o confirmada.</div>
         ) : (
           <div style={styles.list}>
             {confirmed.map((appt) => (
@@ -357,6 +468,16 @@ export default function AgendaConfigPage() {
                   </div>
                   <div style={{ color: "#6B7280", fontSize: 14 }}>Paciente: {getDisplayName(appt.patientId)}</div>
                 </div>
+                <button
+                  style={{
+                    ...styles.recordButton,
+                    ...(recordingAppointment?.id === appt.id ? { opacity: 0.6, cursor: "not-allowed" } : null),
+                  }}
+                  onClick={() => handleRecordConsultation(appt)}
+                  disabled={recordingAppointment?.id === appt.id}
+                >
+                  {appt.historyId ? "Atualizar historico" : "Registrar historico"}
+                </button>
               </div>
             ))}
           </div>
@@ -391,10 +512,10 @@ export default function AgendaConfigPage() {
 
       {/* Seus horarios publicados */}
       <div style={{ ...styles.card, marginTop: 18 }}>
-        <h3 style={{ marginTop: 0, marginBottom: 8 }}>Meus horários</h3>
+        <h3 style={{ marginTop: 0, marginBottom: 8 }}>Meus horÃ¡rios</h3>
         <div style={styles.list}>
           {slots.length === 0 ? (
-            <div style={{ color: "#6B7280" }}>Nenhum horário publicado.</div>
+            <div style={{ color: "#6B7280" }}>Nenhum horÃ¡rio publicado.</div>
           ) : (
             slots.map((slot) => (
               <div key={slot.id} style={styles.item}>
@@ -416,7 +537,7 @@ export default function AgendaConfigPage() {
                     </div>
                   )}
                 </div>
-                {/* Ações por status */}
+                {/* AÃ§Ãµes por status */}
                 {slot.status === "OPEN" ? (
                   <button
                     onClick={() => handleDelete(slot.id)}
@@ -457,7 +578,7 @@ export default function AgendaConfigPage() {
                     })()}
                   </div>
                 ) : (
-                  <div /> // BOOKED -> sem ação
+                  <div /> // BOOKED -> sem aÃ§Ã£o
                 )}
               </div>
             ))
@@ -467,4 +588,12 @@ export default function AgendaConfigPage() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
 
