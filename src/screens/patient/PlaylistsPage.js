@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 
 // Importa as ferramentas do Firebase que esta página precisa
 import { db } from '../../firebase';
@@ -6,7 +6,7 @@ import { collection, onSnapshot, query } from 'firebase/firestore';
 
 // Importa os ícones que esta página precisa
 import { XIcon, PlayIcon, PauseIcon } from '../../common/Icons';
-
+import { usePlayer, sanitizeTrack } from '../../context/PlayerContext';
 
 // --- MODAL PARA EXIBIR AS MÚSICAS DA PLAYLIST ---
 // Este modal agora apenas lista as músicas para o paciente ouvir.
@@ -65,7 +65,16 @@ const PlaylistSongsModal = ({ playlist, onClose, onPlaySong }) => {
                                     <p style={styles.songArtist}>{song.artist}</p>
                                 </div>
                                 {/* O botão de play agora passa a música inteira e a imagem da playlist */}
-                                <button onClick={() => onPlaySong({...song, image: playlist.image})} style={styles.playButton}>
+                                <button
+                                    onClick={() =>
+                                        onPlaySong({
+                                            track: { ...song, image: playlist.image },
+                                            queue: songs.map((item) => ({ ...item, image: playlist.image })),
+                                            index: songs.findIndex((item) => item.id === song.id),
+                                        })
+                                    }
+                                    style={styles.playButton}
+                                >
                                     <PlayIcon width="24" height="24" />
                                 </button>
                             </div>
@@ -82,9 +91,7 @@ const PlaylistSongsModal = ({ playlist, onClose, onPlaySong }) => {
 
 // --- PÁGINA DE PLAYLISTS (VERSÃO PACIENTE) ---
 const PlaylistsPage = () => {
-    const audioRef = useRef(null);
-    const [nowPlaying, setNowPlaying] = useState(null);
-    const [isPlaying, setIsPlaying] = useState(false);
+    const { currentTrack, isPlaying, playTrack, togglePlayPause } = usePlayer();
     const [firestorePlaylists, setFirestorePlaylists] = useState([]);
     const [message, setMessage] = useState({ type: '', text: '' });
     const [showSongsModal, setShowSongsModal] = useState(false);
@@ -120,28 +127,31 @@ const PlaylistsPage = () => {
         return () => unsubscribe();
     }, []);
 
-    const handlePlayPause = (track) => {
-        if (nowPlaying && nowPlaying.id === track.id) {
-            if (isPlaying) {
-                audioRef.current.pause();
-                setIsPlaying(false);
-            } else {
-                audioRef.current.play();
-                setIsPlaying(true);
-            }
-        } else {
-            setNowPlaying(track);
-        }
-    };
+    const buildQueue = (tracks = [], fallbackImage) =>
+        tracks
+            .map((item) => sanitizeTrack({ ...item, image: item.image || fallbackImage }))
+            .filter(Boolean);
 
-    useEffect(() => {
-        if (nowPlaying && audioRef.current) {
-            audioRef.current.src = nowPlaying.url;
-            audioRef.current.play()
-                .then(() => setIsPlaying(true))
-                .catch(error => console.error("Erro ao tocar áudio:", error));
+    const handleTrackAction = (track, queue = [], fallbackImage) => {
+        const normalizedTrack = sanitizeTrack({ ...track, image: track.image || fallbackImage });
+        if (!normalizedTrack) {
+            setMessage({ type: 'error', text: 'Faixa indisponível para reprodução.' });
+            return;
         }
-    }, [nowPlaying]);
+
+        const normalizedQueue = buildQueue(queue, fallbackImage);
+        const index = normalizedQueue.findIndex((item) => item.id === normalizedTrack.id);
+
+        if (currentTrack?.id === normalizedTrack.id) {
+            togglePlayPause();
+        } else {
+            playTrack(normalizedTrack, {
+                queue: normalizedQueue.length ? normalizedQueue : [normalizedTrack],
+                index: normalizedQueue.length ? Math.max(index, 0) : 0,
+            });
+        }
+        setMessage({ type: '', text: '' });
+    };
 
     // Funções para controlar o novo modal de músicas
     const openSongsModal = (playlist) => {
@@ -164,7 +174,7 @@ const PlaylistsPage = () => {
             cardDesc: { color: '#b3b3b3', fontSize: '0.9rem', margin: 0 },
             playButton: { position: 'absolute', bottom: '75px', right: '20px', backgroundColor: '#8B5CF6', color: '#fff', border: 'none', borderRadius: '50%', width: '50px', height: '50px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 15px rgba(0,0,0,0.3)', transition: 'transform 0.2s, opacity 0.2s', opacity: (isHovered || isPlayingNow) ? 1 : 0, transform: (isHovered || isPlayingNow) ? 'translateY(0)' : 'translateY(10px)' },
         };
-        
+
         // Se a playlist for dinâmica (do Firestore), clicar no card abre a lista de músicas.
         // Se for estática, não faz nada ao clicar no card (só no botão de play).
         const cardClickHandler = isDynamic ? () => onViewSongs(item) : undefined;
@@ -174,10 +184,16 @@ const PlaylistsPage = () => {
                 <img src={item.image} alt={item.name} style={styles.cardImage} />
                 <h4 style={styles.cardTitle}>{item.name}</h4>
                 <p style={styles.cardDesc}>{item.desc}</p>
-                
+
                 {/* O botão de play só aparece para playlists estáticas que têm uma URL direta */}
                 {!isDynamic && (
-                    <button style={styles.playButton} onClick={() => onPlay(item)}>
+                    <button
+                        style={styles.playButton}
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            onPlay(item);
+                        }}
+                    >
                         {isPlayingNow ? <PauseIcon/> : <PlayIcon />}
                     </button>
                 )}
@@ -186,55 +202,27 @@ const PlaylistsPage = () => {
     };
 
     // Componente que renderiza uma seção de playlists
-    const PlaylistSection = ({ title, data, onPlay, nowPlaying, isPlaying, isDynamic = false, onViewSongs }) => (
+    const PlaylistSection = ({ title, data, onPlay, currentTrackId, isPlayingGlobal, isDynamic = false, onViewSongs }) => (
         <section style={{ marginBottom: '2rem' }}>
             <h2 style={{ color: '#fff', fontSize: '1.5rem', fontWeight: '700', marginBottom: '1.5rem' }}>{title}</h2>
             <div style={{ display: 'flex', gap: '1.5rem', overflowX: 'auto', paddingBottom: '1rem' }}>
-                {data.map(item => (
-                    <PlaylistCard
-                        key={item.id}
-                        item={item}
-                        onPlay={onPlay}
-                        isPlayingNow={nowPlaying?.id === item.id && isPlaying}
-                        isDynamic={isDynamic}
-                        onViewSongs={onViewSongs}
-                    />
-                ))}
+                {data.map(item => {
+                    const normalized = sanitizeTrack({ ...item, image: item.image });
+                    const isPlayingNow = !!normalized && normalized.id === currentTrackId && isPlayingGlobal;
+                    return (
+                        <PlaylistCard
+                            key={item.id}
+                            item={item}
+                            onPlay={(track) => onPlay(track, data, item.image)}
+                            isPlayingNow={isPlayingNow}
+                            isDynamic={isDynamic}
+                            onViewSongs={onViewSongs}
+                        />
+                    );
+                })}
             </div>
         </section>
     );
-    
-    // Barra de player que aparece na parte inferior
-    const PlayerBar = ({ track, onPlayPause, isPlaying }) => {
-        if (!track) return null;
-        const styles = {
-            playerBar: { position: 'fixed', bottom: 0, left: '250px', right: 0, backgroundColor: '#181818', borderTop: '1px solid #282828', padding: '1rem 2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 100 },
-            trackInfo: { display: 'flex', alignItems: 'center', gap: '1rem' },
-            trackImage: { width: '56px', height: '56px', borderRadius: '4px', objectFit: 'cover' },
-            trackDetails: {},
-            trackName: { color: '#fff', fontWeight: 600, margin: 0 },
-            trackDesc: { color: '#b3b3b3', margin: '4px 0 0 0' },
-            controls: { display: 'flex', alignItems: 'center' },
-            playPauseButton: { background: 'none', border: '2px solid #fff', color: '#fff', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
-        };
-
-        return (
-            <div style={styles.playerBar}>
-                <div style={styles.trackInfo}>
-                    <img src={track.image} alt={track.name} style={styles.trackImage} />
-                    <div style={styles.trackDetails}>
-                        <p style={styles.trackName}>{track.name}</p>
-                        <p style={styles.trackDesc}>{track.artist || track.desc}</p>
-                    </div>
-                </div>
-                <div style={styles.controls}>
-                    <button style={styles.playPauseButton} onClick={() => onPlayPause(track)}>
-                        {isPlaying ? <PauseIcon/> : <PlayIcon/>}
-                    </button>
-                </div>
-            </div>
-        );
-    };
 
     const styles = {
         pageContainer: { padding: '0 2rem', backgroundColor: '#121212', color: '#fff', fontFamily: '"Inter", sans-serif', overflowY: 'auto', height: '100vh', paddingBottom: '100px' },
@@ -264,7 +252,6 @@ const PlaylistsPage = () => {
 
     return (
         <div style={styles.pageContainer}>
-            <audio ref={audioRef} onEnded={() => setIsPlaying(false)} />
             <div style={styles.heroSection}>
                 <div style={styles.heroInfo}>
                     <h1 style={styles.heroTitle}>Suas Playlists</h1>
@@ -273,31 +260,56 @@ const PlaylistsPage = () => {
             </div>
 
             {/* REMOVIDO: Formulário para adicionar nova playlist */}
+            {message.text && (
+                <div
+                    style={{
+                        marginBottom: '1.5rem',
+                        padding: '0.75rem 1rem',
+                        borderRadius: '8px',
+                        backgroundColor: message.type === 'error' ? '#7f1d1d' : '#065f46',
+                        color: '#F9FAFB',
+                    }}
+                >
+                    {message.text}
+                </div>
+            )}
 
             {/* Playlists do terapeuta (dinâmicas) */}
-            <PlaylistSection 
-                title="Playlists do seu Terapeuta" 
-                data={firestorePlaylists} 
-                onPlay={handlePlayPause} 
-                nowPlaying={nowPlaying} 
-                isPlaying={isPlaying} 
-                isDynamic={true} 
+            <PlaylistSection
+                title="Playlists do seu Terapeuta"
+                data={firestorePlaylists}
+                onPlay={(track, list, fallbackImage) => handleTrackAction(track, list, fallbackImage)}
+                currentTrackId={currentTrack?.id}
+                isPlayingGlobal={isPlaying}
+                isDynamic={true}
                 onViewSongs={openSongsModal}
             />
 
             {/* Playlists estáticas */}
-            <PlaylistSection title="Sugestões para Você" data={yourPlaylistsStatic} onPlay={handlePlayPause} nowPlaying={nowPlaying} isPlaying={isPlaying}/>
-            <PlaylistSection title="Sons da Natureza" data={natureSounds} onPlay={handlePlayPause} nowPlaying={nowPlaying} isPlaying={isPlaying}/>
+            <PlaylistSection
+                title="Sugestões para Você"
+                data={yourPlaylistsStatic}
+                onPlay={(track, list, fallbackImage) => handleTrackAction(track, list, fallbackImage)}
+                currentTrackId={currentTrack?.id}
+                isPlayingGlobal={isPlaying}
+            />
+            <PlaylistSection
+                title="Sons da Natureza"
+                data={natureSounds}
+                onPlay={(track, list, fallbackImage) => handleTrackAction(track, list, fallbackImage)}
+                currentTrackId={currentTrack?.id}
+                isPlayingGlobal={isPlaying}
+            />
             {/* ... (outras seções estáticas) */}
-
-            <PlayerBar track={nowPlaying} onPlayPause={handlePlayPause} isPlaying={isPlaying} />
 
             {/* O modal de visualização de músicas é chamado aqui */}
             {showSongsModal && selectedPlaylist && (
                 <PlaylistSongsModal 
                     playlist={selectedPlaylist} 
                     onClose={closeSongsModal}
-                    onPlaySong={handlePlayPause} // Reutiliza a mesma função de play/pause
+                    onPlaySong={({ track, queue }) =>
+                        handleTrackAction(track, queue, selectedPlaylist.image)
+                    }
                 />
             )}
         </div>
