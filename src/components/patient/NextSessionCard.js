@@ -82,6 +82,7 @@ const NextSessionCard = ({
   onSchedule,
   enableManualRefresh = false,
   statusFilter,
+  onSessionChange,
 }) => {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -201,6 +202,12 @@ const NextSessionCard = ({
     return `Nao foi possivel carregar sua sessao. Detalhes: ${error.message}`;
   };
 
+  useEffect(() => {
+    if (typeof onSessionChange === 'function') {
+      onSessionChange(session);
+    }
+  }, [session, onSessionChange]);
+
   return (
     <div style={styles.card}>
       <div style={styles.infoBlock}>
@@ -230,7 +237,11 @@ const NextSessionCard = ({
             <button
               type="button"
               style={styles.primaryButton}
-              onClick={onViewDetails}
+              onClick={() => {
+                if (typeof onViewDetails === 'function') {
+                  onViewDetails(session);
+                }
+              }}
             >
               Ver detalhes
             </button>
