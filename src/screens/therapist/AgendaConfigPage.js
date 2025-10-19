@@ -257,7 +257,7 @@ export default function AgendaConfigPage() {
       setWorking(slotId);
       await deleteSlot(therapistId, slotId);
     } catch (err) {
-      alert(err?.message || "Nao foi possivel excluir o horario");
+      alert(err?.message || "Não foi possível excluir o horário");
     } finally {
       setWorking(null);
     }
@@ -294,7 +294,7 @@ export default function AgendaConfigPage() {
           prev.map((appt) => (appt.id === apptId && previous ? previous : appt))
         );
         updateActionState(apptId, { loading: false, error: true });
-        alert(error?.message || "NÃ£o foi possÃ­vel concluir a aÃ§Ã£o. Tente novamente.");
+        alert(error?.message || "Não foi possível concluir a ação. Tente novamente.");
       });
   }
 
@@ -339,13 +339,13 @@ export default function AgendaConfigPage() {
         ...payload,
         updatedBy: therapistId,
       });
-      setFeedback({ type: "success", message: "SessÃ£o registrada no histórico do paciente." });
+      setFeedback({ type: "success", message: "Sessão registrada no histórico do paciente." });
       setRecordingAppointment(null);
     } catch (error) {
       console.error("completeAppointment", error);
       setFeedback({
         type: "error",
-        message: error?.message || "NÃ£o foi possÃ­vel salvar a sessÃ£o.",
+        message: error?.message || "Não foi possível salvar a sessão.",
       });
       throw error;
     }
@@ -364,7 +364,7 @@ export default function AgendaConfigPage() {
       />
       <h1 style={styles.title}>Configurar Agenda</h1>
       <p style={styles.subtitle}>
-        Publique seus horarios disponiveis. Gerencie solicitacoes dos pacientes e confirme ou recuse.
+        Publique seus horários disponíveis. Gerencie solicitações dos pacientes e confirme ou recuse.
       </p>
       {feedback ? (
         <div
@@ -374,9 +374,7 @@ export default function AgendaConfigPage() {
           }}
         >
           <span>{feedback.message}</span>
-          <button type="button" style={styles.feedbackClose} onClick={() => setFeedback(null)}>
-            Ã—
-          </button>
+          <button type="button" style={styles.feedbackClose} onClick={() => setFeedback(null)}>{"\u00D7"}</button>
         </div>
       ) : null}
 
@@ -408,11 +406,11 @@ export default function AgendaConfigPage() {
         </div>
       </div>
 
-      {/* Solicitacoes pendentes (PENDING) */}
+      {/* Solicitações pendentes (PENDING) */}
       <div style={{ ...styles.card, marginTop: 18 }}>
-        <h3 style={{ marginTop: 0, marginBottom: 8 }}>SolicitaÃ§Ãµes pendentes</h3>
+        <h3 style={{ marginTop: 0, marginBottom: 8 }}>Solicitações pendentes</h3>
         {pending.length === 0 ? (
-          <div style={{ color: "#6B7280" }}>Nenhuma solicitaÃ§Ã£o pendente.</div>
+          <div style={{ color: "#6B7280" }}>Nenhuma solicitação pendente.</div>
         ) : (
           <div style={styles.list}>
             {pending.map((appt) => (
@@ -431,7 +429,7 @@ export default function AgendaConfigPage() {
                     onClick={() => handleDecline(appt.id)}
                     disabled={actionState[appt.id]?.loading}
                     style={styles.secondary}
-                    aria-label={`Recusar solicitacao de ${getDisplayName(appt.patientId)}`}
+                    aria-label={`Recusar solicitação de ${getDisplayName(appt.patientId)}`}
                   >
                     {actionState[appt.id]?.loading ? "Processando..." : "Recusar"}
                   </button>
@@ -439,7 +437,7 @@ export default function AgendaConfigPage() {
                     onClick={() => handleApprove(appt.id)}
                     disabled={actionState[appt.id]?.loading}
                     style={styles.success}
-                    aria-label={`Confirmar solicitacao de ${getDisplayName(appt.patientId)}`}
+                    aria-label={`Confirmar solicitação de ${getDisplayName(appt.patientId)}`}
                   >
                     {actionState[appt.id]?.loading ? "Processando..." : "Confirmar"}
                   </button>
@@ -452,9 +450,9 @@ export default function AgendaConfigPage() {
 
       {/* Proximos confirmados */}
       <div style={{ ...styles.card, marginTop: 18 }}>
-        <h3 style={{ marginTop: 0, marginBottom: 8 }}>PrÃ³ximas sessões confirmadas</h3>
+        <h3 style={{ marginTop: 0, marginBottom: 8 }}>Próximas sessões confirmadas</h3>
         {confirmed.length === 0 ? (
-          <div style={{ color: "#6B7280" }}>Nenhuma sessÃ£o confirmada.</div>
+          <div style={{ color: "#6B7280" }}>Nenhuma sessão confirmada.</div>
         ) : (
           <div style={styles.list}>
             {confirmed.map((appt) => (
@@ -476,7 +474,7 @@ export default function AgendaConfigPage() {
                   onClick={() => handleRecordConsultation(appt)}
                   disabled={recordingAppointment?.id === appt.id}
                 >
-                  {appt.historyId ? "Atualizar historico" : "Registrar historico"}
+                  {appt.historyId ? "Atualizar histórico" : "Registrar histórico"}
                 </button>
               </div>
             ))}
@@ -510,12 +508,12 @@ export default function AgendaConfigPage() {
         )}
       </div>
 
-      {/* Seus horarios publicados */}
+      {/* Seus horários publicados */}
       <div style={{ ...styles.card, marginTop: 18 }}>
-        <h3 style={{ marginTop: 0, marginBottom: 8 }}>Meus horÃ¡rios</h3>
+        <h3 style={{ marginTop: 0, marginBottom: 8 }}>Meus horários</h3>
         <div style={styles.list}>
           {slots.length === 0 ? (
-            <div style={{ color: "#6B7280" }}>Nenhum horÃ¡rio publicado.</div>
+            <div style={{ color: "#6B7280" }}>Nenhum horário publicado.</div>
           ) : (
             slots.map((slot) => (
               <div key={slot.id} style={styles.item}>
@@ -537,7 +535,7 @@ export default function AgendaConfigPage() {
                     </div>
                   )}
                 </div>
-                {/* AÃ§Ãµes por status */}
+                {/* Ações por status */}
                 {slot.status === "OPEN" ? (
                   <button
                     onClick={() => handleDelete(slot.id)}
@@ -561,7 +559,7 @@ export default function AgendaConfigPage() {
                             onClick={() => handleDecline(appt.id)}
                             disabled={actionState[appt.id]?.loading}
                             style={styles.secondary}
-                            aria-label={`Recusar solicitacao de ${getDisplayName(appt.patientId)}`}
+                            aria-label={`Recusar solicitação de ${getDisplayName(appt.patientId)}`}
                           >
                             {actionState[appt.id]?.loading ? "Processando..." : "Recusar"}
                           </button>
@@ -569,7 +567,7 @@ export default function AgendaConfigPage() {
                             onClick={() => handleApprove(appt.id)}
                             disabled={actionState[appt.id]?.loading}
                             style={styles.success}
-                            aria-label={`Confirmar solicitacao de ${getDisplayName(appt.patientId)}`}
+                            aria-label={`Confirmar solicitação de ${getDisplayName(appt.patientId)}`}
                           >
                             {actionState[appt.id]?.loading ? "Processando..." : "Confirmar"}
                           </button>
@@ -578,7 +576,7 @@ export default function AgendaConfigPage() {
                     })()}
                   </div>
                 ) : (
-                  <div /> // BOOKED -> sem aÃ§Ã£o
+                  <div /> // BOOKED -> sem ação
                 )}
               </div>
             ))
@@ -588,6 +586,16 @@ export default function AgendaConfigPage() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
 
 
 
