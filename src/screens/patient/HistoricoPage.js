@@ -202,14 +202,11 @@ const HistoricoPage = ({ user }) => {
     };
   }, [consultations]);
 
-  const { upcomingSessions, completedSessions } = useMemo(() => {
-    const upcoming = [];
+  const completedSessions = useMemo(() => {
     const completed = [];
     consultations.forEach((consultation) => {
       const status = String(consultation?.sessionStatus || consultation?.status || "").toLowerCase();
-      if (status === "scheduled" || status === "in_progress") {
-        upcoming.push(consultation);
-      } else if (status === "completed") {
+      if (status === "completed") {
         completed.push(consultation);
       }
     });
@@ -218,9 +215,8 @@ const HistoricoPage = ({ user }) => {
       const bDate = toDate(b?.startsAt)?.getTime() || 0;
       return bDate - aDate;
     };
-    upcoming.sort(sortDescByStart);
     completed.sort(sortDescByStart);
-    return { upcomingSessions: upcoming, completedSessions: completed };
+    return completed;
   }, [consultations]);
 
   const summary = useMemo(() => {
@@ -482,15 +478,6 @@ const HistoricoPage = ({ user }) => {
         <div style={styles.loadingBox}>Carregando histórico...</div>
       ) : (
         <>
-          <section style={styles.section}>
-            <h2 style={styles.sectionTitle}>Próximas consultas</h2>
-            {upcomingSessions.length === 0 ? (
-              <div style={styles.emptyState}>Nenhuma consulta agendada no momento.</div>
-            ) : (
-              upcomingSessions.map(renderSessionCard)
-            )}
-          </section>
-
           <section style={styles.section}>
             <h2 style={styles.sectionTitle}>Consultas realizadas</h2>
             {completedSessions.length === 0 ? (
