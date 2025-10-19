@@ -152,7 +152,9 @@ const AppointmentDetailModal = ({ open, appointment, onClose }) => {
     return '';
   }, [appointment]);
 
-  const meetUrl =
+  const meetingUrl =
+    appointment?.meetingUrl ||
+    appointment?.meeting?.joinUrl ||
     appointment?.meetUrl ||
     appointment?.videoUrl ||
     appointment?.callUrl ||
@@ -169,8 +171,8 @@ const AppointmentDetailModal = ({ open, appointment, onClose }) => {
   };
 
   const handleEnterClick = () => {
-    if (!meetUrl) return;
-    window.open(meetUrl, '_blank', 'noopener,noreferrer');
+    if (!meetingUrl) return;
+    window.open(meetingUrl, '_blank', 'noopener,noreferrer');
   };
 
   if (!open || !appointment) {
@@ -237,16 +239,16 @@ const AppointmentDetailModal = ({ open, appointment, onClose }) => {
             </p>
           </div>
 
-          {modality === 'online' && meetUrl && (
+          {meetingUrl && (
             <div>
-              <p style={labelStyles}>Link da videochamada</p>
+              <p style={labelStyles}>Acessar sala Jitsi</p>
               <a
                 style={{ ...valueStyles, color: '#6366F1', textDecoration: 'underline' }}
-                href={meetUrl}
+                href={meetingUrl}
                 target="_blank"
                 rel="noreferrer noopener"
               >
-                Acessar link
+                Abrir sala
               </a>
             </div>
           )}
@@ -279,13 +281,13 @@ const AppointmentDetailModal = ({ open, appointment, onClose }) => {
             type="button"
             style={{
               ...primaryButtonStyles,
-              opacity: meetUrl ? 1 : 0.5,
-              cursor: meetUrl ? 'pointer' : 'not-allowed',
+              opacity: meetingUrl ? 1 : 0.5,
+              cursor: meetingUrl ? 'pointer' : 'not-allowed',
             }}
             onClick={handleEnterClick}
-            disabled={!meetUrl}
+            disabled={!meetingUrl}
           >
-            Entrar
+            Entrar na sessão
           </button>
         </div>
       </div>

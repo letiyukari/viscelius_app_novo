@@ -1,4 +1,4 @@
-﻿// src/screens/therapist/AgendaConfigPage.js
+// src/screens/therapist/AgendaConfigPage.js
 // Pagina do TERAPEUTA para publicar/gerenciar disponibilidade (slots)
 // Inclui aprovacao/recusa de solicitacoes (HELD) e exclusao de slots OPEN.
 
@@ -586,6 +586,9 @@ export default function AgendaConfigPage() {
     </div>
   );
 }
+
+
+
 
 
 

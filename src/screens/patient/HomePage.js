@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import { db } from '../../firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import Icons from '../../components/common/Icons';
-import BackButton from '../../components/common/BackButton';
 import NextSessionCard from '../../components/patient/NextSessionCard';
 import AppointmentDetailModal from '../../components/patient/AppointmentDetailModal';
 import BreathingExercise from '../../components/wellness/BreathingExercise';
@@ -65,7 +64,6 @@ const HomePage = ({ user }) => {
   const styles = {
     page: { padding: '2rem 3.5rem', background: '#F9FAFB', minHeight: '100vh', fontFamily: '"Inter", sans-serif' },
     header: { marginBottom: '1rem' },
-    backWrap: { marginBottom: '1rem' },
     helloSmall: { color: '#6B7280', margin: '0 0 .5rem 0' },
     helloBig: { color: '#1F2937', fontSize: '2.5rem', fontWeight: 800, margin: 0, lineHeight: 1.2 },
     grid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1.5rem' },
@@ -131,10 +129,6 @@ const HomePage = ({ user }) => {
 
   return (
     <div style={styles.page}>
-      <div style={styles.backWrap}>
-        <BackButton />
-      </div>
-
       <header style={styles.header}>
         <p style={styles.helloSmall}>Bem-vindo(a) de volta,</p>
         <h1 style={styles.helloBig}>{displayName}</h1>
