@@ -1,5 +1,5 @@
 // src/components/patient/NextSessionCard.js
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   collection,
   limit,
@@ -20,6 +20,8 @@ const dateFormatter = new Intl.DateTimeFormat('pt-BR', {
   minute: '2-digit',
   timeZone: 'America/Sao_Paulo',
 });
+
+const MAX_SESSIONS = 10;
 
 const styles = {
   card: {
@@ -94,6 +96,29 @@ const styles = {
     marginTop: '0.85rem',
     opacity: 0.9,
   },
+  navControls: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.65rem',
+    marginTop: '1rem',
+    flexWrap: 'wrap',
+  },
+  navIndicator: {
+    fontSize: '0.85rem',
+    fontWeight: 600,
+    letterSpacing: '0.04em',
+  },
+  navButton: {
+    background: 'rgba(255,255,255,0.18)',
+    border: '1px solid rgba(255,255,255,0.3)',
+    color: '#FFFFFF',
+    padding: '8px 16px',
+    borderRadius: 999,
+    cursor: 'pointer',
+    fontWeight: 600,
+    fontSize: '0.85rem',
+    transition: 'opacity 0.2s ease, transform 0.2s ease',
+  },
 };
 
 const defaultTheme = {
@@ -114,6 +139,12 @@ const defaultTheme = {
     border: '1px solid #FFFFFF',
     color: '#6D28D9',
   },
+  navButton: {
+    background: 'rgba(255,255,255,0.18)',
+    border: '1px solid rgba(255,255,255,0.3)',
+    color: '#FFFFFF',
+  },
+  navIndicatorColor: 'rgba(255,255,255,0.9)',
 };
 
 const STATUS_THEMES = {
@@ -140,6 +171,12 @@ const STATUS_THEMES = {
       border: '1px solid rgba(146, 64, 14, 0.35)',
       color: '#92400E',
     },
+    navButton: {
+      background: 'rgba(255,255,255,0.75)',
+      border: '1px solid rgba(146, 64, 14, 0.35)',
+      color: '#92400E',
+    },
+    navIndicatorColor: '#7C2D12',
   },
   canceled: {
     background: 'linear-gradient(135deg, #FCA5A5, #EF4444)',
@@ -159,6 +196,12 @@ const STATUS_THEMES = {
       border: '1px solid #FFFFFF',
       color: '#B91C1C',
     },
+    navButton: {
+      background: 'rgba(255,255,255,0.2)',
+      border: '1px solid rgba(255,255,255,0.32)',
+      color: '#FFFFFF',
+    },
+    navIndicatorColor: 'rgba(255,255,255,0.92)',
   },
   declined: {
     background: 'linear-gradient(135deg, #F28B82, #DC2626)',
@@ -178,6 +221,12 @@ const STATUS_THEMES = {
       border: '1px solid #FFFFFF',
       color: '#B91C1C',
     },
+    navButton: {
+      background: 'rgba(255,255,255,0.2)',
+      border: '1px solid rgba(255,255,255,0.32)',
+      color: '#FFFFFF',
+    },
+    navIndicatorColor: 'rgba(255,255,255,0.92)',
   },
   completed: {
     background: 'linear-gradient(135deg, #34D399, #059669)',
@@ -197,6 +246,12 @@ const STATUS_THEMES = {
       border: '1px solid #FFFFFF',
       color: '#047857',
     },
+    navButton: {
+      background: 'rgba(255,255,255,0.2)',
+      border: '1px solid rgba(255,255,255,0.32)',
+      color: '#FFFFFF',
+    },
+    navIndicatorColor: 'rgba(255,255,255,0.92)',
   },
 };
 
@@ -260,6 +315,17 @@ function createThemedStyles(theme) {
     emptyState: {
       ...styles.emptyState,
       color: theme.subtitleColor,
+    },
+    navControls: {
+      ...styles.navControls,
+    },
+    navIndicator: {
+      ...styles.navIndicator,
+      color: theme.navIndicatorColor || theme.subtitleColor,
+    },
+    navButton: {
+      ...styles.navButton,
+      ...(theme.navButton || theme.primaryButton || {}),
     },
   };
 }
@@ -440,18 +506,23 @@ const NextSessionCard = ({
   statusFilter,
   onSessionChange,
 }) => {
-  const [session, setSession] = useState(null);
+  const [sessions, setSessions] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [refreshToken, setRefreshToken] = useState(0);
   const [therapistDisplayName, setTherapistDisplayName] = useState('');
+  const currentSessionIdRef = useRef(null);
+  const currentSession = sessions[currentIndex] || null;
+  const totalSessions = sessions.length;
 
   useEffect(() => {
     let isMounted = true;
     let unsubscribe;
 
     if (!patientId) {
-      setSession(null);
+      setSessions([]);
+      setCurrentIndex(0);
       setError(null);
       setLoading(false);
       return undefined;
@@ -476,7 +547,7 @@ const NextSessionCard = ({
       constraints.push(
         where('startTime', '>', now),
         orderBy('startTime', 'asc'),
-        limit(1),
+        limit(MAX_SESSIONS),
       );
 
       const nextSessionQuery = query(
@@ -497,8 +568,22 @@ const NextSessionCard = ({
             fromCache: snapshot.metadata.fromCache,
           });
 
-          const nextDoc = snapshot.docs[0];
-          setSession(nextDoc ? { id: nextDoc.id, ...nextDoc.data() } : null);
+          const nextSessions = snapshot.docs.map((docSnap) => ({
+            id: docSnap.id,
+            ...docSnap.data(),
+          }));
+          const previousId = currentSessionIdRef.current;
+          const foundIndex =
+            previousId && nextSessions.length > 0
+              ? nextSessions.findIndex((item) => item.id === previousId)
+              : -1;
+          setSessions(nextSessions);
+          setCurrentIndex(() => {
+            if (foundIndex >= 0) {
+              return foundIndex;
+            }
+            return 0;
+          });
           setLoading(false);
         },
         (err) => {
@@ -508,7 +593,8 @@ const NextSessionCard = ({
 
           console.error('[NextSessionCard] Listener error', err);
           setError(err);
-          setSession(null);
+          setSessions([]);
+          setCurrentIndex(0);
           setLoading(false);
         },
       );
@@ -516,7 +602,8 @@ const NextSessionCard = ({
       console.error('[NextSessionCard] Failed to create listener', listenerError);
       if (isMounted) {
         setError(listenerError);
-        setSession(null);
+        setSessions([]);
+        setCurrentIndex(0);
         setLoading(false);
       }
     }
@@ -530,25 +617,25 @@ const NextSessionCard = ({
   }, [patientId, refreshToken, statusFilter]);
 
   useEffect(() => {
-    if (!session) {
+    if (!currentSession) {
       setTherapistDisplayName('');
       return undefined;
     }
 
-    const localName = resolveTherapistCandidate(session);
+    const localName = resolveTherapistCandidate(currentSession);
     if (localName) {
       setTherapistDisplayName(localName);
       return undefined;
     }
 
-    if (!session.therapistId) {
+    if (!currentSession.therapistId) {
       setTherapistDisplayName('Profissional');
       return undefined;
     }
 
     let active = true;
 
-    getUserProfile(session.therapistId)
+    getUserProfile(currentSession.therapistId)
       .then((profile) => {
         if (!active) return;
         const profileName = firstNonEmpty(
@@ -568,47 +655,50 @@ const NextSessionCard = ({
     return () => {
       active = false;
     };
-  }, [session]);
+  }, [currentSession]);
 
   const formattedDate = useMemo(() => {
-    const startSource = session?.startTime ?? session?.slotStartsAt;
+    const startSource = currentSession?.startTime ?? currentSession?.slotStartsAt;
     if (!startSource) return '';
     const startDate =
       typeof startSource?.toDate === 'function'
         ? startSource.toDate()
         : new Date(startSource);
     return dateFormatter.format(startDate);
-  }, [session?.startTime, session?.slotStartsAt]);
+  }, [currentSession?.startTime, currentSession?.slotStartsAt]);
 
   const normalizedStatus = useMemo(() => {
-    if (!session) return 'default';
-    const normalized = normalizeStatus(session.status);
+    if (!currentSession) return 'default';
+    const normalized = normalizeStatus(currentSession.status);
     return normalized || 'pending';
-  }, [session]);
+  }, [currentSession]);
 
   const theme = useMemo(() => getStatusTheme(normalizedStatus), [normalizedStatus]);
   const themedStyles = useMemo(() => createThemedStyles(theme), [theme]);
   const statusCopy = useMemo(
-    () => resolveStatusCopy(normalizedStatus, session),
-    [normalizedStatus, session],
+    () => resolveStatusCopy(normalizedStatus, currentSession),
+    [normalizedStatus, currentSession],
   );
 
-  const modalityLabel = useMemo(() => resolveModalityLabel(session), [session]);
+  const modalityLabel = useMemo(() => resolveModalityLabel(currentSession), [currentSession]);
   const therapistLine = useMemo(() => {
-    if (!session) return '';
+    if (!currentSession) return '';
     const baseName = therapistDisplayName || 'Profissional';
     if (!modalityLabel) return baseName;
     return `${baseName} - ${modalityLabel}`;
-  }, [session, therapistDisplayName, modalityLabel]);
+  }, [currentSession, therapistDisplayName, modalityLabel]);
 
-  const hasSession = !loading && !error && !!session;
+  const hasSession = !loading && !error && !!currentSession;
+  const hasPrevious = hasSession && currentIndex > 0;
+  const hasNext = hasSession && currentIndex < totalSessions - 1;
   const showSessionActions = hasSession;
-  const showScheduleAction = !loading && !error && !session;
+  const showScheduleAction = !loading && !error && !currentSession;
   const showStatusBadge = hasSession && Boolean(statusCopy.badge);
 
   const manualRefresh = () => {
     console.info('[NextSessionCard] Manual refresh triggered', { patientId });
     setRefreshToken((prev) => prev + 1);
+    setCurrentIndex(0);
   };
 
   const renderErrorMessage = () => {
@@ -624,14 +714,18 @@ const NextSessionCard = ({
 
   useEffect(() => {
     if (typeof onSessionChange === 'function') {
-      onSessionChange(session);
+      onSessionChange(currentSession);
     }
-  }, [session, onSessionChange]);
+  }, [currentSession, onSessionChange]);
+
+  useEffect(() => {
+    currentSessionIdRef.current = currentSession?.id ?? null;
+  }, [currentSession?.id]);
 
   return (
     <div style={themedStyles.card}>
       <div style={styles.infoBlock}>
-        <p style={themedStyles.title}>Sua Proxima Sessao</p>
+        <p style={themedStyles.title}>Informações da sessão</p>
 
         {showStatusBadge && (
           <span style={themedStyles.statusBadge}>{statusCopy.badge}</span>
@@ -653,6 +747,40 @@ const NextSessionCard = ({
           </>
         )}
 
+        {hasSession && totalSessions > 1 && (
+          <div style={themedStyles.navControls}>
+            {hasPrevious && (
+              <button
+                type="button"
+                style={themedStyles.navButton}
+                onClick={() => {
+                  setCurrentIndex((prev) => (prev <= 0 ? 0 : prev - 1));
+                }}
+              >
+                Sessao anterior
+              </button>
+            )}
+            <span style={themedStyles.navIndicator}>
+              Sessao {currentIndex + 1} de {totalSessions}
+            </span>
+            {hasNext && (
+              <button
+                type="button"
+                style={themedStyles.navButton}
+                onClick={() => {
+                  setCurrentIndex((prev) => {
+                    if (totalSessions === 0) return 0;
+                    const limit = totalSessions - 1;
+                    return prev >= limit ? limit : prev + 1;
+                  });
+                }}
+              >
+                Proxima sessao
+              </button>
+            )}
+          </div>
+        )}
+
         {!hasSession && !loading && !error && (
           <p style={themedStyles.emptyState}>Nenhuma sessao futura</p>
         )}
@@ -666,7 +794,7 @@ const NextSessionCard = ({
               style={themedStyles.primaryButton}
               onClick={() => {
                 if (typeof onViewDetails === 'function') {
-                  onViewDetails(session);
+                  onViewDetails(currentSession);
                 }
               }}
             >
