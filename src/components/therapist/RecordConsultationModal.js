@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { getConsultation } from "../../services/consultations";
 import { ClockIcon, VideoIcon } from "../../common/Icons";
 
@@ -83,7 +83,7 @@ function formatRange(start, end) {
   const datePart = dateFormatter.format(startDate);
   const startTime = timeFormatter.format(startDate);
   const endTime = endDate ? timeFormatter.format(endDate) : "";
-  return endTime ? `${datePart} â€¢ ${startTime} - ${endTime}` : `${datePart} â€¢ ${startTime}`;
+  return endTime ? `${datePart} • ${startTime} - ${endTime}` : `${datePart} • ${startTime}`;
 }
 
 const styles = {
@@ -448,7 +448,7 @@ const RecordConsultationModal = ({ open, appointment, patientName, onClose, onSa
           <div>
             <h2 style={styles.headerTitle}>Registrar histórico da sessão</h2>
             <p style={styles.headerSubtitle}>
-              {patientName ? `Paciente: ${patientName}` : "Paciente não identificado"} â€¢ {sessionRange}
+              {patientName ? `Paciente: ${patientName}` : "Paciente não identificado"} • {sessionRange}
             </p>
           </div>
           <button type="button" onClick={onClose} style={styles.closeButton} aria-label="Fechar">

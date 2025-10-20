@@ -1,5 +1,5 @@
-﻿// src/services/consultations.js
-// ServiÃ§o responsÃ¡vel pelo histÃ³rico de consultas realizados via plataforma
+// src/services/consultations.js
+// Serviço responsável pelo histórico de consultas realizados via plataforma
 
 import {
   addDoc,
@@ -26,7 +26,7 @@ export async function createConsultation(payload) {
 }
 
 export async function updateConsultation(consultationId, changes) {
-  if (!consultationId) throw new Error("consultationId Ã© obrigatÃ³rio");
+  if (!consultationId) throw new Error("consultationId é obrigatório");
   const partial = buildConsultationUpdatePayload(changes);
   if (!partial || Object.keys(partial).length === 0) return;
 
@@ -38,7 +38,7 @@ export async function updateConsultation(consultationId, changes) {
 }
 
 export async function getConsultation(consultationId) {
-  if (!consultationId) throw new Error("consultationId Ã© obrigatÃ³rio");
+  if (!consultationId) throw new Error("consultationId é obrigatório");
   const ref = doc(db, COLLECTION_NAME, consultationId);
   const snap = await getDoc(ref);
   if (!snap.exists()) return null;
@@ -46,7 +46,7 @@ export async function getConsultation(consultationId) {
 }
 
 export async function listConsultationsByPatient(patientId, options = {}) {
-  if (!patientId) throw new Error("patientId Ã© obrigatÃ³rio");
+  if (!patientId) throw new Error("patientId é obrigatório");
   const constraints = [
     where("patientId", "==", patientId),
   ];
@@ -59,7 +59,7 @@ export async function listConsultationsByPatient(patientId, options = {}) {
 }
 
 export async function listConsultationsByTherapist(therapistId, options = {}) {
-  if (!therapistId) throw new Error("therapistId Ã© obrigatÃ³rio");
+  if (!therapistId) throw new Error("therapistId é obrigatório");
   const constraints = [
     where("therapistId", "==", therapistId),
   ];
@@ -72,7 +72,7 @@ export async function listConsultationsByTherapist(therapistId, options = {}) {
 }
 
 export function subscribePatientConsultations(patientId, cb, onError) {
-  if (!patientId) throw new Error("patientId Ã© obrigatÃ³rio");
+  if (!patientId) throw new Error("patientId é obrigatório");
   const constraints = [
     where("patientId", "==", patientId),
   ];
@@ -80,7 +80,7 @@ export function subscribePatientConsultations(patientId, cb, onError) {
 }
 
 export function subscribeTherapistConsultations(therapistId, cb, onError) {
-  if (!therapistId) throw new Error("therapistId Ã© obrigatÃ³rio");
+  if (!therapistId) throw new Error("therapistId é obrigatório");
   const constraints = [
     where("therapistId", "==", therapistId),
   ];
@@ -118,14 +118,14 @@ function buildConsultationCreatePayload(input = {}) {
     updatedBy,
   } = input;
 
-  if (!appointmentId) throw new Error("appointmentId Ã© obrigatÃ³rio");
-  if (!therapistId) throw new Error("therapistId Ã© obrigatÃ³rio");
-  if (!patientId) throw new Error("patientId Ã© obrigatÃ³rio");
+  if (!appointmentId) throw new Error("appointmentId é obrigatório");
+  if (!therapistId) throw new Error("therapistId é obrigatório");
+  if (!patientId) throw new Error("patientId é obrigatório");
 
   const starts = toTimestamp(startsAt);
   const ends = toTimestamp(endsAt);
-  if (!starts) throw new Error("startsAt Ã© obrigatÃ³rio");
-  if (!ends) throw new Error("endsAt Ã© obrigatÃ³rio");
+  if (!starts) throw new Error("startsAt é obrigatório");
+  if (!ends) throw new Error("endsAt é obrigatório");
 
   const now = serverTimestamp();
   return {

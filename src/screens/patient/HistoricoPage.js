@@ -1,4 +1,4 @@
-﻿// src/screens/patient/HistoricoPage.js
+// src/screens/patient/HistoricoPage.js
 import React, { useEffect, useMemo, useState } from "react";
 import {
   AwardIcon,
@@ -66,10 +66,10 @@ function formatTimeRange(start, end) {
       hour: "2-digit",
       minute: "2-digit",
     });
-    return `${formatter.format(startDate)} Ã¢â‚¬Â¢ ${formatter.format(endDate)}`;
+    return `${formatter.format(startDate)} • ${formatter.format(endDate)}`;
   } catch (error) {
     console.error("formatTimeRange", error);
-    return `${startDate.toISOString().slice(11, 16)} Ã¢â‚¬Â¢ ${endDate.toISOString().slice(11, 16)}`;
+    return `${startDate.toISOString().slice(11, 16)} • ${endDate.toISOString().slice(11, 16)}`;
   }
 }
 
@@ -363,7 +363,7 @@ const HistoricoPage = ({ user }) => {
         {hasReminder && (
           <div style={styles.reminderBox}>
             <ClockIcon />
-            <span>Próxima revisÃ£o sugerida: {formatDateWithWeekday(session.followUp.reminderAt)}</span>
+            <span>Próxima revisão sugerida: {formatDateWithWeekday(session.followUp.reminderAt)}</span>
           </div>
         )}
       </div>
@@ -481,7 +481,7 @@ const HistoricoPage = ({ user }) => {
           <section style={styles.section}>
             <h2 style={styles.sectionTitle}>Consultas realizadas</h2>
             {completedSessions.length === 0 ? (
-              <div style={styles.emptyState}>Ainda não existem consultas registradas no histÃ³rico.</div>
+              <div style={styles.emptyState}>Ainda não existem consultas registradas no histórico.</div>
             ) : (
               completedSessions.map(renderSessionCard)
             )}
