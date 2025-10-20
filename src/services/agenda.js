@@ -1,4 +1,4 @@
-﻿// src/services/agenda.js
+// src/services/agenda.js
 // Serviço central da Agenda (Firestore)
 // Fluxo: terapeuta publica horários -> paciente solicita -> terapeuta aprova/nega -> paciente vê status
 

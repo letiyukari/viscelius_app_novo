@@ -1,8 +1,7 @@
 // src/components/patient/AppointmentDetailModal.js
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { getUserProfile } from '../../services/usersService';
 
 const dateFormatter = new Intl.DateTimeFormat('pt-BR', {
   weekday: 'long',
@@ -97,34 +96,85 @@ const secondaryButtonStyles = {
   minWidth: '120px',
 };
 
+const toTrimmedString = (value) =>
+  typeof value === 'string' ? value.trim() : '';
+
+const joinSpecialtyArray = (items) => {
+  if (!Array.isArray(items)) return '';
+  return items
+    .map((item) => toTrimmedString(item))
+    .filter(Boolean)
+    .join(', ');
+};
+
+const extractSpecialtyText = (source = {}) => {
+  if (!source) return '';
+  const candidates = [
+    toTrimmedString(source.specialtyText),
+    toTrimmedString(source.specialty),
+    joinSpecialtyArray(source.specialties),
+  ];
+  return candidates.find(Boolean) || '';
+};
+
+const extractAppointmentSpecialty = (appointment = {}) => {
+  if (!appointment) return '';
+  const candidates = [
+    toTrimmedString(appointment.therapistSpecialty),
+    toTrimmedString(appointment.therapistSpecialtyText),
+    extractSpecialtyText(appointment.therapist),
+    extractSpecialtyText(appointment.therapistProfile),
+  ];
+  return candidates.find(Boolean) || '';
+};
+
 const AppointmentDetailModal = ({ open, appointment, onClose }) => {
   const [therapistName, setTherapistName] = useState('');
+  const [therapistSpecialty, setTherapistSpecialty] = useState('');
 
   useEffect(() => {
     if (!open) {
       setTherapistName('');
+      setTherapistSpecialty('');
       return;
     }
 
-    const hasTherapistName = (appointment?.therapistName || '').trim();
-    if (hasTherapistName || !appointment?.therapistId) {
-      setTherapistName(hasTherapistName || '');
+    const fallbackName = (appointment?.therapistName || '').trim();
+    const fallbackSpecialty = extractAppointmentSpecialty(appointment);
+    const therapistId = (appointment?.therapistId || '').trim();
+
+    setTherapistName(fallbackName || therapistId || 'Profissional');
+    setTherapistSpecialty(fallbackSpecialty);
+
+    if (!therapistId) {
       return;
     }
 
     let active = true;
     async function fetchTherapistName() {
       try {
-        const snap = await getDoc(doc(db, 'users', appointment.therapistId));
-        if (!active) return;
-        const data = snap.data();
-        const name =
-          (data?.displayName || data?.name || '').trim() || appointment.therapistId;
-        setTherapistName(name);
+        const profile = await getUserProfile(therapistId);
+        if (!active) {
+          return;
+        }
+        if (!profile) {
+          return;
+        }
+
+        const profileName =
+          (profile.displayName || profile.name || '').trim();
+        if (!fallbackName && profileName) {
+          setTherapistName(profileName);
+        }
+
+        const profileSpecialty = extractSpecialtyText(profile);
+        if (profileSpecialty) {
+          setTherapistSpecialty(profileSpecialty);
+        }
       } catch (error) {
         console.error('[AppointmentDetailModal] Falha ao carregar terapeuta', error);
-        if (active) {
-          setTherapistName(appointment.therapistId || 'Profissional');
+        if (active && !fallbackName) {
+          setTherapistName(therapistId || 'Profissional');
         }
       }
     }
@@ -133,7 +183,15 @@ const AppointmentDetailModal = ({ open, appointment, onClose }) => {
     return () => {
       active = false;
     };
-  }, [open, appointment?.therapistId, appointment?.therapistName]);
+  }, [
+    open,
+    appointment?.therapistId,
+    appointment?.therapistName,
+    appointment?.therapistSpecialty,
+    appointment?.therapistSpecialtyText,
+    appointment?.therapist,
+    appointment?.therapistProfile,
+  ]);
 
   const formattedDate = useMemo(() => {
     if (!appointment) return '';
@@ -152,7 +210,9 @@ const AppointmentDetailModal = ({ open, appointment, onClose }) => {
     return '';
   }, [appointment]);
 
-  const meetUrl =
+  const meetingUrl =
+    appointment?.meetingUrl ||
+    appointment?.meeting?.joinUrl ||
     appointment?.meetUrl ||
     appointment?.videoUrl ||
     appointment?.callUrl ||
@@ -169,8 +229,8 @@ const AppointmentDetailModal = ({ open, appointment, onClose }) => {
   };
 
   const handleEnterClick = () => {
-    if (!meetUrl) return;
-    window.open(meetUrl, '_blank', 'noopener,noreferrer');
+    if (!meetingUrl) return;
+    window.open(meetingUrl, '_blank', 'noopener,noreferrer');
   };
 
   if (!open || !appointment) {
@@ -227,26 +287,22 @@ const AppointmentDetailModal = ({ open, appointment, onClose }) => {
           </div>
 
           <div>
-            <p style={labelStyles}>Modalidade</p>
+            <p style={labelStyles}>Especialidade</p>
             <p style={valueStyles}>
-              {modality === 'online'
-                ? 'Online'
-                : modality === 'presencial'
-                ? 'Presencial'
-                : 'A definir'}
+              {therapistSpecialty || 'Especialidade não informada'}
             </p>
           </div>
 
-          {modality === 'online' && meetUrl && (
+          {meetingUrl && (
             <div>
-              <p style={labelStyles}>Link da videochamada</p>
+              <p style={labelStyles}>Acessar sala Jitsi</p>
               <a
                 style={{ ...valueStyles, color: '#6366F1', textDecoration: 'underline' }}
-                href={meetUrl}
+                href={meetingUrl}
                 target="_blank"
                 rel="noreferrer noopener"
               >
-                Acessar link
+                Abrir sala
               </a>
             </div>
           )}
@@ -279,13 +335,13 @@ const AppointmentDetailModal = ({ open, appointment, onClose }) => {
             type="button"
             style={{
               ...primaryButtonStyles,
-              opacity: meetUrl ? 1 : 0.5,
-              cursor: meetUrl ? 'pointer' : 'not-allowed',
+              opacity: meetingUrl ? 1 : 0.5,
+              cursor: meetingUrl ? 'pointer' : 'not-allowed',
             }}
             onClick={handleEnterClick}
-            disabled={!meetUrl}
+            disabled={!meetingUrl}
           >
-            Entrar
+            Entrar na sessão
           </button>
         </div>
       </div>

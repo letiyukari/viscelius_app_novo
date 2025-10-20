@@ -9,7 +9,6 @@ import {
   getDocs,
   limit as limitConstraint,
   onSnapshot,
-  orderBy,
   query,
   serverTimestamp,
   Timestamp,
@@ -50,7 +49,6 @@ export async function listConsultationsByPatient(patientId, options = {}) {
   if (!patientId) throw new Error("patientId é obrigatório");
   const constraints = [
     where("patientId", "==", patientId),
-    orderBy("startsAt", "desc"),
   ];
   if (options.limit) {
     constraints.push(limitConstraint(options.limit));
@@ -64,7 +62,6 @@ export async function listConsultationsByTherapist(therapistId, options = {}) {
   if (!therapistId) throw new Error("therapistId é obrigatório");
   const constraints = [
     where("therapistId", "==", therapistId),
-    orderBy("startsAt", "desc"),
   ];
   if (options.limit) {
     constraints.push(limitConstraint(options.limit));
@@ -78,7 +75,6 @@ export function subscribePatientConsultations(patientId, cb, onError) {
   if (!patientId) throw new Error("patientId é obrigatório");
   const constraints = [
     where("patientId", "==", patientId),
-    orderBy("startsAt", "desc"),
   ];
   return subscribeConsultations(constraints, cb, onError);
 }
@@ -87,7 +83,6 @@ export function subscribeTherapistConsultations(therapistId, cb, onError) {
   if (!therapistId) throw new Error("therapistId é obrigatório");
   const constraints = [
     where("therapistId", "==", therapistId),
-    orderBy("startsAt", "desc"),
   ];
   return subscribeConsultations(constraints, cb, onError);
 }

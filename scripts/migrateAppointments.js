@@ -23,9 +23,9 @@
  * Checklist de testes manuais recomendados:
  * 1) Criar appointment manualmente com `patientId` de teste, `slotStartsAt` / `slotEndsAt` válidos
  *    e `status` "CONFIRMED" — a migração deve gerar `startTime` / `endTime` como Timestamp e salvar status "confirmed".
- * 2) Abrir a Home do paciente: o card “Sua Próxima Sessão” precisa exibir a sessão via onSnapshot.
+ * 2) Abrir a Home do paciente: o card "Sua Próxima Sessão" precisa exibir a sessão via onSnapshot.
  * 3) Ajustar o horário de `slotStartsAt`/`slotEndsAt` para uma data mais próxima: o card deve atualizar em tempo real.
- * 4) Mudar o status para "canceled": o card deve ocultar a sessão e mostrar “Nenhuma sessão futura”.
+ * 4) Mudar o status para "canceled": o card deve ocultar a sessão e mostrar "Nenhuma sessão futura".
  * 5) Inspecionar o console do navegador: verificar ausência de warnings de memory leak (listener limpo corretamente).
  */
 
