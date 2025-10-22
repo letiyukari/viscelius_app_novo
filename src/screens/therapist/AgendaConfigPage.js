@@ -318,40 +318,20 @@ const styles = {
     flexWrap: "wrap",
   },
   movementInfo: { display: "flex", flexDirection: "column", gap: "0.35rem" },
-  quickActionsCard: {
-    background: "#FFFFFF",
-    borderRadius: 16,
-    border: "1px solid #E5E7EB",
-    padding: "1.25rem",
+  publishFormTitle: { margin: 0, fontSize: "1.1rem", fontWeight: 700, color: "#111827" },
+  publishForm: {
     display: "flex",
     flexDirection: "column",
-    gap: "0.85rem",
-    position: "sticky",
-    top: "2.5rem",
-  },
-  quickActionsTitle: { margin: 0, fontSize: "1.1rem", fontWeight: 700, color: "#111827" },
-  quickActionButton: {
-    padding: "0.6rem 0.85rem",
-    borderRadius: 12,
-    border: "1px solid #D1D5DB",
-    background: "#F9FAFB",
-    color: "#1F2937",
-    fontWeight: 600,
-    cursor: "pointer",
-    textAlign: "left",
-  },
-  publishForm: {
-    display: "grid",
     gap: "0.75rem",
     background: "#F9FAFB",
     borderRadius: 12,
-    padding: "0.85rem",
+    padding: "1.1rem",
     border: "1px solid #E5E7EB",
   },
   formGrid: {
     display: "grid",
     gap: "0.75rem",
-    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gridTemplateColumns: "1fr",
   },
   input: {
     width: "100%",
@@ -360,6 +340,7 @@ const styles = {
     borderRadius: 10,
     padding: "0 12px",
     fontSize: 14,
+    boxSizing: "border-box",
   },
   publishButton: {
     background: "#7C3AED",
@@ -430,7 +411,6 @@ export default function AgendaConfigPage() {
   const [rangeFilter, setRangeFilter] = useState("7");
   const [pendingFilter, setPendingFilter] = useState("all");
   const [movementsTab, setMovementsTab] = useState("confirmed");
-  const [showPublishForm, setShowPublishForm] = useState(false);
 
   useEffect(() => {
     if (!therapistId) return;
@@ -1013,55 +993,39 @@ const fallbackName = "Usuario";
         </div>
 
         <aside style={styles.sidebar}>
-          <div style={styles.quickActionsCard}>
-            <h3 style={styles.quickActionsTitle}>Ações rápidas</h3>
-            <button
-              type="button"
-              onClick={() => setShowPublishForm((prev) => !prev)}
-              style={styles.quickActionButton}
-            >
-              {showPublishForm ? "Ocultar formulário" : "Adicionar horário disponível"}
-            </button>
-            <button type="button" onClick={handleGenerateLink} style={styles.quickActionButton}>
-              Gerar link da sessão
-            </button>
-            <button type="button" onClick={handleSendReminder} style={styles.quickActionButton}>
-              Enviar lembrete
-            </button>
-
-            {showPublishForm && (
-              <div style={styles.publishForm}>
-                <div style={styles.formGrid}>
-                  <input
-                    type="date"
-                    value={date}
-                    onChange={(event) => setDate(event.target.value)}
-                    style={styles.input}
-                  />
-                  <input
-                    type="time"
-                    value={start}
-                    onChange={(event) => setStart(event.target.value)}
-                    style={styles.input}
-                  />
-                  <input
-                    type="time"
-                    value={end}
-                    onChange={(event) => setEnd(event.target.value)}
-                    style={styles.input}
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={handlePublish}
-                  disabled={loadingPublish}
-                  style={styles.publishButton}
-                >
-                  {loadingPublish ? "Publicando..." : "Publicar horário"}
-                </button>
-                <span style={styles.summaryHint}>Duração sugerida: {duration} min</span>
+          <div style={{ position: "sticky", top: "2.5rem" }}>
+            <div style={styles.publishForm}>
+              <h3 style={styles.publishFormTitle}>Adicionar horário disponível</h3>
+              <div style={styles.formGrid}>
+                <input
+                  type="date"
+                  value={date}
+                  onChange={(event) => setDate(event.target.value)}
+                  style={styles.input}
+                />
+                <input
+                  type="time"
+                  value={start}
+                  onChange={(event) => setStart(event.target.value)}
+                  style={styles.input}
+                />
+                <input
+                  type="time"
+                  value={end}
+                  onChange={(event) => setEnd(event.target.value)}
+                  style={styles.input}
+                />
               </div>
-            )}
+              <button
+                type="button"
+                onClick={handlePublish}
+                disabled={loadingPublish}
+                style={styles.publishButton}
+              >
+                {loadingPublish ? "Publicando..." : "Publicar horário"}
+              </button>
+              <span style={styles.summaryHint}>Duração sugerida: {duration} min</span>
+            </div>
           </div>
         </aside>
       </div>
