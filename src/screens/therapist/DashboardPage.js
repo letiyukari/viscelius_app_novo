@@ -1,11 +1,12 @@
 // src/screens/therapist/DashboardPage.js
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { db } from '../../firebase';
 import { collection, doc, getDoc, onSnapshot, query, where } from 'firebase/firestore';
-import Icons from '../../components/common/Icons';
-import Notification from '../../components/common/Notification';
+import { UserIcon } from '../../common/Icons'; // Ícones necessários
+import Notification from '../../components/common/Notification'; // Assumindo components/common
 import PatientDetailModal from '../../components/therapist/PatientDetailModal';
 import BackButton from '../../components/common/BackButton';
+import { useNavigate } from 'react-router-dom';
 
 function niceNameFromEmail(email) {
   if (!email) return '';
@@ -15,173 +16,242 @@ function niceNameFromEmail(email) {
   return parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
 }
 
+const FILTER_MODES = {
+  MY_PATIENTS: 'MY_PATIENTS',
+  ALL_PATIENTS: 'ALL_PATIENTS',
+};
+
+// Função auxiliar para formatar a data (Assumindo que você tem uma)
+const formatDate = (date) => {
+    if (!date) return 'Nenhuma';
+    const d = date instanceof Date ? date : date.toDate();
+    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
+};
+
 const TherapistDashboardPage = ({ user }) => {
-  const [viewingPatient, setViewingPatient] = useState(null);
-  const [patients, setPatients] = useState([]); // Armazena a lista completa de pacientes da plataforma
-  const [filteredPatients, setFilteredPatients] = useState([]); // Armazena a lista filtrada pela busca
-  const [searchTerm, setSearchTerm] = useState(''); // Armazena o texto da busca
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [notification, setNotification] = useState({ message: '', type: '' });
-  const [userData, setUserData] = useState(null);
+  const navigate = useNavigate();
   const therapistUid = user?.uid;
+  const [viewingPatient, setViewingPatient] = useState(null);
+  const [patients, setPatients] = useState([]); // Lista completa de pacientes da plataforma
+  const [filteredPatients, setFilteredPatients] = useState([]); // Lista filtrada pela busca
+  const [searchTerm, setSearchTerm] = useState(''); // Texto da busca
+  const [filterMode, setFilterMode] = useState(FILTER_MODES.MY_PATIENTS); // Modo de filtro
+  const [loading, setLoading] = useState(true);
+  const [notification, setNotification] = useState({ message: '', type: '' });
+  const [activityCache, setActivityCache] = useState({}); // Cache de atividade
 
-  // pega o displayName no Firestore
+  // Função para buscar a atividade (última consulta/próximo agendamento)
+  // Assumindo que você tem uma função fetchPatientActivity no activityService.js
+  const fetchActivity = useCallback(async (patientId) => {
+    // Para simplificar a reversão, vamos apenas retornar um objeto vazio
+    // Você pode reintroduzir a lógica do activityService.js aqui
+    return { nextAppointment: null, lastConsultation: null };
+  }, []);
+
+  // Efeito para carregar pacientes
   useEffect(() => {
-    let live = true;
-    async function load() {
-      if (!user?.uid) return;
-      const snap = await getDoc(doc(db, 'users', user.uid));
-      if (live && snap.exists()) setUserData(snap.data());
+    if (!therapistUid) {
+      setLoading(false);
+      return;
     }
-    load();
-    return () => { live = false; };
-  }, [user?.uid]);
 
-  const therapistName = useMemo(() => {
-    const fsName = (userData?.displayName || '').trim();
-    const authName = (user?.displayName || '').trim();
-    return fsName || authName || niceNameFromEmail(user?.email) || 'Profissional';
-  }, [userData?.displayName, user?.displayName, user?.email]);
-
-  // carrega TODOS os pacientes da plataforma
-  useEffect(() => {
     setLoading(true);
-    setError(null);
-    const usersCollectionRef = collection(db, 'users');
+    let q;
     
-    // ================== CORREÇÃO APLICADA AQUI ==================
-    // Antes estava: where('perfil', '==', 'paciente')
-    // Corrigido para: where('role', '==', 'patient'), conforme a estrutura do seu Firebase.
-    const q = query(usersCollectionRef, where('role', '==', 'patient'));
-    // ==========================================================
-
-    const unsubscribe = onSnapshot(
-      q,
-      (querySnapshot) => {
-        const patientsData = [];
-        querySnapshot.forEach((doc) => {
-          // Garante que o próprio terapeuta (se tiver role 'patient' por algum erro) não apareça na lista
-          if (doc.id !== therapistUid) { 
-            patientsData.push({ id: doc.id, ...doc.data() });
-          }
-        });
-        setPatients(patientsData);
-        setFilteredPatients(patientsData); // Inicialmente, a lista filtrada é igual à completa
-        setLoading(false);
-      },
-      (err) => {
-        console.error('Erro ao carregar pacientes:', err);
-        setError('Nao foi possivel carregar os pacientes.');
-        setLoading(false);
-      }
-    );
-    return () => unsubscribe();
-  }, [therapistUid]); // Adicionado therapistUid para refiltrar se o usuário mudar
-
-  // Filtra os pacientes conforme o usuário digita na busca
-  useEffect(() => {
-    if (searchTerm === '') {
-      setFilteredPatients(patients);
-    } else {
-      const lowercasedTerm = searchTerm.toLowerCase();
-      const newFilteredList = patients.filter(patient =>
-        (patient.displayName || '').toLowerCase().includes(lowercasedTerm)
+    // Query condicional para filtrar por modo
+    if (filterMode === FILTER_MODES.MY_PATIENTS) {
+      q = query(
+        collection(db, 'users'),
+        where('role', '==', 'patient'),
+        where('therapistUid', '==', therapistUid)
       );
-      setFilteredPatients(newFilteredList);
+    } else {
+      q = query(
+        collection(db, 'users'),
+        where('role', '==', 'patient')
+      );
     }
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const patientList = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        displayName: doc.data().displayName || niceNameFromEmail(doc.data().email),
+      }));
+      setPatients(patientList);
+      setLoading(false);
+    }, (error) => {
+      console.error("Erro ao carregar pacientes:", error);
+      setNotification({ message: 'Erro ao carregar pacientes.', type: 'error' });
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [therapistUid, filterMode]);
+
+  // Efeito para carregar atividades (mantido, mas simplificado na fetchActivity)
+  useEffect(() => {
+    if (patients.length > 0) {
+      patients.forEach(patient => {
+        if (!activityCache[patient.id]) {
+          fetchActivity(patient.id).then(activity => {
+            setActivityCache(prev => ({ ...prev, [patient.id]: activity }));
+          });
+        }
+      });
+    }
+  }, [patients, fetchActivity, activityCache]);
+
+  // Efeito para filtrar pacientes por busca
+  useEffect(() => {
+    const lowerCaseSearch = searchTerm.toLowerCase();
+    const filtered = patients.filter(patient => 
+      patient.displayName.toLowerCase().includes(lowerCaseSearch) ||
+      patient.email.toLowerCase().includes(lowerCaseSearch)
+    );
+    setFilteredPatients(filtered);
   }, [searchTerm, patients]);
 
-
-  const styles = {
-    pageContainer: { padding: '2rem 3.5rem', backgroundColor: '#F9FAFB', fontFamily: '"Inter", sans-serif' },
-    header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' },
-    titleGroup: { display: 'flex', flexDirection: 'column' },
-    backWrap: { marginBottom: '1rem' },
-    helloSmall: { color: '#6B7280', margin: 0 },
-    helloBig: { color: '#1F2937', fontSize: '2.4rem', fontWeight: 800, margin: 0 },
-    sectionTitle: { fontSize: '1.5rem', color: '#1F2937', fontWeight: 800, marginBottom: '1.5rem' },
-    searchBar: { // Estilo para a barra de busca
-        width: '100%',
-        padding: '12px 16px',
-        fontSize: '1rem',
-        marginBottom: '2rem',
-        borderRadius: '12px',
-        border: '1px solid #E5E7EB',
-        boxSizing: 'border-box'
-    },
-    patientGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' },
-    patientCard: {
-      backgroundColor: '#fff', padding: '1.5rem', borderRadius: '16px',
-      border: '1px solid #E5E7EB', boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
-      transition: 'transform 0.2s, box-shadow 0.2s', cursor: 'pointer'
-    },
-    cardHeader: { display: 'flex', alignItems: 'center', gap: '1rem' },
-    patientAvatar: {
-      width: 50, height: 50, borderRadius: '50%', backgroundColor: '#EDE9FE',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
-    },
-    patientName: { margin: 0, color: '#1F2937', fontWeight: 600, fontSize: '1.2rem' },
-    patientDetails: { margin: '4px 0 0 0', color: '#6B7280', fontSize: '.9rem' },
+  const handleToggleFilter = () => {
+    setFilterMode(prev => 
+      prev === FILTER_MODES.MY_PATIENTS 
+        ? FILTER_MODES.ALL_PATIENTS 
+        : FILTER_MODES.MY_PATIENTS
+    );
+    setSearchTerm(''); // Limpa a busca ao trocar de modo
   };
 
-  const handleCardHover = (e, enter) => {
-    if (enter) {
-      e.currentTarget.style.transform = 'translateY(-5px)';
-      e.currentTarget.style.boxShadow = '0 8px 20px rgba(0,0,0,0.08)';
-    } else {
-      e.currentTarget.style.transform = 'translateY(0)';
-      e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.05)';
-    }
+  const renderActivity = (patientId) => {
+    const activity = activityCache[patientId];
+    if (!activity) return <p style={{ margin: 0, fontSize: '0.8rem', color: '#6B7280' }}>Carregando atividade...</p>;
+
+    return (
+      <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#6B7280' }}>
+        <p style={{ margin: 0 }}>
+          Próxima Sessão: {formatDate(activity.nextAppointment?.slotStartsAt)}
+        </p>
+        <p style={{ margin: 0 }}>
+          Última Consulta: {formatDate(activity.lastConsultation?.completedAt)}
+        </p>
+      </div>
+    );
+  };
+
+  // Estilos (Revertidos para o essencial)
+  const styles = {
+    pageContainer: { padding: '2rem 3.5rem', backgroundColor: '#F9FAFB', fontFamily: '"Inter", sans-serif', minHeight: '100vh' },
+    header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' },
+    title: { color: '#1F2937', fontSize: '2.2rem', fontWeight: '700', margin: 0 },
+    searchFilterContainer: { display: 'flex', gap: '10px', marginBottom: '1.5rem', alignItems: 'center' },
+    searchBar: {
+      flexGrow: 1,
+      padding: '12px 15px',
+      borderRadius: '12px',
+      border: '1px solid #E5E7EB',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+      fontSize: '1rem',
+    },
+    filterButton: {
+      padding: '12px 20px',
+      borderRadius: '12px',
+      border: 'none',
+      cursor: 'pointer',
+      fontWeight: '600',
+      fontSize: '1rem',
+      backgroundColor: filterMode === FILTER_MODES.MY_PATIENTS ? '#8B5CF6' : '#E5E7EB',
+      color: filterMode === FILTER_MODES.MY_PATIENTS ? 'white' : '#1F2937',
+      transition: 'background-color 0.3s, color 0.3s',
+    },
+    patientGrid: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+      gap: '20px',
+    },
+    patientCard: {
+      backgroundColor: 'white',
+      padding: '20px',
+      borderRadius: '12px',
+      boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1)',
+      cursor: 'pointer',
+      transition: 'transform 0.1s, box-shadow 0.1s',
+      '&:hover': {
+        transform: 'translateY(-2px)',
+        boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1)',
+      },
+    },
+    cardHeader: {
+      display: 'flex',
+      alignItems: 'center',
+      marginBottom: '10px',
+    },
+    patientAvatar: {
+      width: '40px',
+      height: '40px',
+      borderRadius: '50%',
+      backgroundColor: '#F3F4F6',
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: '15px',
+    },
+    patientName: {
+      fontSize: '1.1rem',
+      fontWeight: '600',
+      margin: 0,
+      color: '#1F2937',
+    },
+    patientDetails: {
+      fontSize: '0.9rem',
+      color: '#6B7280',
+      margin: 0,
+    },
+    // Removidos estilos de actionButton e agendaButton
   };
 
   return (
     <div style={styles.pageContainer}>
-      <PatientDetailModal patient={viewingPatient} onClose={() => setViewingPatient(null)} />
       <Notification
         message={notification.message}
         type={notification.type}
         onDone={() => setNotification({ message: '', type: '' })}
       />
-
-      <div style={styles.backWrap}>
-        <BackButton />
-      </div>
-
+      
       <header style={styles.header}>
-        <div style={styles.titleGroup}>
-          <p style={styles.helloSmall}>Bem-vindo(a) de volta,</p>
-          <h1 style={styles.helloBig}>{therapistName}</h1>
-        </div>
+        <h1 style={styles.title}>
+          {filterMode === FILTER_MODES.MY_PATIENTS ? 'Meus Pacientes Ativos' : 'Todos os Pacientes da Plataforma'}
+        </h1>
       </header>
 
-      {/* TÍTULO E BARRA DE BUSCA ATUALIZADOS */}
-      <h2 style={styles.sectionTitle}>Pacientes na Plataforma</h2>
-      <input
-        type="text"
-        placeholder="Buscar paciente por nome..."
-        style={styles.searchBar}
-        value={searchTerm}
-        onChange={(e) => setSearchTerm(e.target.value)}
-      />
+      <div style={styles.searchFilterContainer}>
+        <input
+          type="text"
+          style={styles.searchBar}
+          placeholder="Buscar paciente por nome ou e-mail..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+        <button
+          style={styles.filterButton}
+          onClick={handleToggleFilter}
+        >
+          {filterMode === FILTER_MODES.MY_PATIENTS ? 'Ver Todos' : 'Ver Meus Pacientes'}
+        </button>
+      </div>
 
-      {loading && <p>Carregando pacientes...</p>}
-      {error && <p style={{ color: 'red' }}>{error}</p>}
-
-      {!loading && !error && (
+      {loading ? (
+        <p>Carregando pacientes...</p>
+      ) : (
         <div style={styles.patientGrid}>
           {filteredPatients.length > 0 ? (
-            filteredPatients.map((patient) => (
-              <div
-                key={patient.id}
+            filteredPatients.map(patient => (
+              <div 
+                key={patient.id} 
                 style={styles.patientCard}
-                onMouseEnter={(e) => handleCardHover(e, true)}
-                onMouseLeave={(e) => handleCardHover(e, false)}
                 onClick={() => setViewingPatient(patient)}
               >
                 <div style={styles.cardHeader}>
                   <div style={styles.patientAvatar}>
-                    <Icons.UserIcon style={{ color: '#6D28D9' }} />
+                    <UserIcon style={{ color: '#6D28D9' }} />
                   </div>
                   <div>
                     <h3 style={styles.patientName}>{patient.displayName || 'Paciente sem nome'}</h3>
@@ -190,12 +260,28 @@ const TherapistDashboardPage = ({ user }) => {
                     </p>
                   </div>
                 </div>
+                {renderActivity(patient.id)}
               </div>
             ))
           ) : (
-            <p>Nenhum paciente encontrado com este nome.</p>
+            <p>
+              {filterMode === FILTER_MODES.MY_PATIENTS 
+                ? 'Você ainda não tem pacientes ativos. Use o botão "Ver Todos" para buscar.' 
+                : 'Nenhum paciente encontrado com este nome.'
+              }
+            </p>
           )}
         </div>
+      )}
+
+      {viewingPatient && (
+        <PatientDetailModal
+          isOpen={!!viewingPatient}
+          onClose={() => setViewingPatient(null)}
+          patient={viewingPatient}
+          therapistId={therapistUid}
+          setNotification={setNotification}
+        />
       )}
     </div>
   );
