@@ -1,66 +1,151 @@
+// src/screens/therapist/SessionPage.js
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom'; // Ferramentas do nosso novo GPS
-import { db } from '../../firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+import { createConsultation } from '../../services/consultations'; // Usando createConsultation
+import { getUserProfile } from '../../services/usersService'; // Usando getUserProfile
+import BackButton from '../../components/common/BackButton';
+import Notification from '../../components/common/Notification';
 
 const SessionPage = () => {
-    // O useParams é uma ferramenta que pega informações da URL (o endereço do site)
-    // No futuro, nossa URL será algo como /sessao/ID_DO_PACIENTE
     const { patientId } = useParams();
+    const navigate = useNavigate();
+    const { user } = useAuth();
+    const therapistId = user?.uid;
+
     const [patient, setPatient] = useState(null);
+    const [notes, setNotes] = useState('');
     const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [notification, setNotification] = useState({ message: '', type: '' });
 
-    // Este efeito roda uma vez para buscar os dados do paciente específico
+    // Carregar Dados do Paciente
     useEffect(() => {
-        const fetchPatient = async () => {
-            const docRef = doc(db, 'users', patientId);
-            const docSnap = await getDoc(docRef);
-
-            if (docSnap.exists()) {
-                setPatient({ id: docSnap.id, ...docSnap.data() });
-            } else {
-                console.error("Nenhum paciente encontrado com este ID!");
-            }
+        if (!patientId) {
             setLoading(false);
+            return;
+        }
+
+        const loadPatient = async () => {
+            try {
+                const patientData = await getUserProfile(patientId);
+                setPatient(patientData);
+            } catch (error) {
+                console.error("Erro ao carregar dados do paciente:", error);
+            } finally {
+                setLoading(false);
+            }
         };
 
-        if (patientId) {
-            fetchPatient();
-        }
+        loadPatient();
     }, [patientId]);
 
+    // Função de Salvar Sessão (Simplificada)
+    const handleSaveSession = async () => {
+        if (!notes.trim()) {
+            setNotification({ message: 'As anotações da sessão não podem estar vazias.', type: 'error' });
+            return;
+        }
+        if (!therapistId || !patientId) {
+            setNotification({ message: 'Erro de autenticação. Tente fazer login novamente.', type: 'error' });
+            return;
+        }
+
+        setSaving(true);
+        try {
+            const consultationData = {
+                therapistId: therapistId,
+                patientId: patientId,
+                notes: notes,
+                completedAt: new Date(),
+                // Removida a parte de playlists
+            };
+
+            await createConsultation(consultationData);
+            
+            setNotification({ message: 'Sessão registrada com sucesso!', type: 'success' });
+            setTimeout(() => {
+                navigate('/dashboard');
+            }, 1500);
+
+        } catch (error) {
+            console.error("Erro ao salvar sessão:", error);
+            setNotification({ message: `Erro ao salvar sessão: ${error.message || 'Verifique o console.'}`, type: 'error' });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    // Estilos (Simplificados)
     const styles = {
-        pageContainer: { padding: '2rem 3.5rem', fontFamily: '"Inter", sans-serif' },
-        header: { marginBottom: '2rem', borderBottom: '1px solid #E5E7EB', paddingBottom: '1rem' },
-        title: { fontSize: '2.2rem', fontWeight: '700', color: '#1F2937', margin: 0 },
-        patientName: { fontSize: '1.5rem', fontWeight: '500', color: '#6B7280', marginTop: '0.5rem' },
-        backLink: { textDecoration: 'none', color: '#8B5CF6', fontWeight: '600', marginBottom: '1rem', display: 'inline-block' },
-        formContainer: { display: 'flex', flexDirection: 'column', gap: '1.5rem' },
-        label: { display: 'block', marginBottom: '8px', color: '#374151', fontSize: '14px', fontWeight: '600' },
-        textArea: { width: '100%', padding: '12px 14px', fontSize: '16px', border: '1px solid #D1D5DB', borderRadius: '8px', boxSizing: 'border-box', minHeight: '250px', fontFamily: 'inherit' },
-        button: { alignSelf: 'flex-start', padding: '12px 24px', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: '600', cursor: 'pointer', backgroundColor: '#8B5CF6', color: 'white' },
+        pageContainer: { padding: '2rem 3.5rem', backgroundColor: '#F9FAFB', fontFamily: '"Inter", sans-serif', minHeight: '100vh' },
+        header: { marginBottom: '2rem' },
+        title: { color: '#1F2937', fontSize: '2.2rem', fontWeight: '700', margin: '0' },
+        subtitle: { fontSize: '1.2rem', color: '#6B7280', margin: '0.5rem 0 0 0' },
+        textarea: {
+            width: '100%',
+            minHeight: '300px',
+            padding: '1rem',
+            fontSize: '1rem',
+            borderRadius: '12px',
+            border: '1px solid #E5E7EB',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+            resize: 'vertical',
+            boxSizing: 'border-box',
+        },
+        saveButton: {
+            backgroundColor: '#8B5CF6',
+            color: 'white',
+            border: 'none',
+            padding: '12px 25px',
+            borderRadius: '12px',
+            cursor: 'pointer',
+            fontWeight: '600',
+            fontSize: '1rem',
+            marginTop: '1.5rem',
+            transition: 'background-color 0.3s',
+        },
     };
 
     if (loading) {
-        return <div style={styles.pageContainer}>Carregando dados do paciente...</div>;
+        return <div style={styles.pageContainer}><p>Carregando...</p></div>;
     }
+    
+    const patientName = patient?.displayName || 'Paciente Desconhecido';
 
     return (
         <div style={styles.pageContainer}>
-            {/* No futuro, este Link nos levará de volta ao painel */}
-            <Link to="/dashboard" style={styles.backLink}>&larr; Voltar para o Painel</Link>
+            <Notification
+                message={notification.message}
+                type={notification.type}
+                onDone={() => setNotification({ message: '', type: '' })}
+            />
+            
+            <BackButton onClick={() => navigate('/dashboard')}>Voltar para o Painel</BackButton>
+
             <header style={styles.header}>
                 <h1 style={styles.title}>Registro de Sessão</h1>
-                {patient && <p style={styles.patientName}>com {patient.name}</p>}
+                <p style={styles.subtitle}>com {patientName}</p>
             </header>
-            
-            <div style={styles.formContainer}>
-                <div>
-                    <label style={styles.label}>Anotações da Sessão</label>
-                    <textarea style={styles.textArea} placeholder="Descreva as atividades, reações e progresso do paciente durante a sessão..."></textarea>
-                </div>
-                <button style={styles.button}>Salvar Sessão</button>
-            </div>
+
+            <section style={{ marginBottom: '2rem' }}>
+                <h2 style={{ fontSize: '1.5rem', color: '#1F2937' }}>Anotações da Sessão</h2>
+                <textarea
+                    style={styles.textarea}
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Descreva as atividades, reações e progresso do paciente durante a sessão..."
+                    disabled={saving}
+                />
+            </section>
+
+            <button
+                style={styles.saveButton}
+                onClick={handleSaveSession}
+                disabled={saving}
+            >
+                {saving ? 'Salvando...' : 'Salvar Sessão'}
+            </button>
         </div>
     );
 };
