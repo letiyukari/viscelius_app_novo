@@ -7,86 +7,7 @@ import { collection, onSnapshot, query } from 'firebase/firestore';
 // Importa os ícones que esta página precisa
 import { XIcon, PlayIcon, PauseIcon } from '../../common/Icons';
 import { usePlayer, sanitizeTrack } from '../../context/PlayerContext';
-
-// --- MODAL PARA EXIBIR AS MÚSICAS DA PLAYLIST ---
-// Este modal agora apenas lista as músicas para o paciente ouvir.
-const PlaylistSongsModal = ({ playlist, onClose, onPlaySong }) => {
-    const [songs, setSongs] = useState([]);
-    const [message, setMessage] = useState({ type: '', text: '' });
-
-    // Efeito para buscar as músicas da playlist selecionada no Firestore
-    useEffect(() => {
-        if (!playlist?.id) return;
-
-        const songsCollectionRef = collection(db, 'playlists', playlist.id, 'songs');
-        const q = query(songsCollectionRef);
-
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
-            const fetchedSongs = [];
-            querySnapshot.forEach((doc) => {
-                fetchedSongs.push({ id: doc.id, ...doc.data() });
-            });
-            setSongs(fetchedSongs);
-        }, (error) => {
-            console.error("Erro ao carregar músicas:", error);
-            setMessage({ type: 'error', text: 'Erro ao carregar músicas.' });
-        });
-
-        return () => unsubscribe();
-    }, [playlist]);
-
-    const styles = {
-        overlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
-        modal: { backgroundColor: '#1E1E1E', padding: '2rem', borderRadius: '12px', width: '90%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', position: 'relative', color: '#fff' },
-        closeButton: { position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', color: '#fff', fontSize: '1.5rem', cursor: 'pointer' },
-        title: { fontSize: '2rem', fontWeight: 'bold', marginBottom: '1.5rem', color: '#fff' },
-        songList: { marginTop: '1rem' },
-        songItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#282828', padding: '0.8rem', borderRadius: '8px', marginBottom: '0.5rem' },
-        songDetails: {},
-        songName: { margin: 0, fontWeight: 600 },
-        songArtist: { margin: '4px 0 0 0', fontSize: '0.9rem', color: '#b3b3b3' },
-        playButton: { background: 'none', border: 'none', color: '#8B5CF6', cursor: 'pointer' },
-    };
-
-    return (
-        <div style={styles.overlay}>
-            <div style={styles.modal}>
-                <button onClick={onClose} style={styles.closeButton}><XIcon /></button>
-                <h2 style={styles.title}>Músicas em "{playlist.name}"</h2>
-                
-                {message.text && <p>{message.text}</p>}
-
-                <div style={styles.songList}>
-                    {songs.length > 0 ? (
-                        songs.map(song => (
-                            <div key={song.id} style={styles.songItem}>
-                                <div style={styles.songDetails}>
-                                    <p style={styles.songName}>{song.name}</p>
-                                    <p style={styles.songArtist}>{song.artist}</p>
-                                </div>
-                                {/* O botão de play agora passa a música inteira e a imagem da playlist */}
-                                <button
-                                    onClick={() =>
-                                        onPlaySong({
-                                            track: { ...song, image: playlist.image },
-                                            queue: songs.map((item) => ({ ...item, image: playlist.image })),
-                                            index: songs.findIndex((item) => item.id === song.id),
-                                        })
-                                    }
-                                    style={styles.playButton}
-                                >
-                                    <PlayIcon width="24" height="24" />
-                                </button>
-                            </div>
-                        ))
-                    ) : (
-                        <p style={{ color: '#b3b3b3' }}>Nenhuma música nesta playlist ainda.</p>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-};
+import PatientPlaylistContentModal from '../../components/patient/PlaylistContentModal';
 
 
 // --- PÁGINA DE PLAYLISTS (VERSÃO PACIENTE) ---
@@ -304,12 +225,10 @@ const PlaylistsPage = () => {
 
             {/* O modal de visualização de músicas é chamado aqui */}
             {showSongsModal && selectedPlaylist && (
-                <PlaylistSongsModal 
-                    playlist={selectedPlaylist} 
+                <PatientPlaylistContentModal
+                    playlist={selectedPlaylist}
                     onClose={closeSongsModal}
-                    onPlaySong={({ track, queue }) =>
-                        handleTrackAction(track, queue, selectedPlaylist.image)
-                    }
+                    onPlayAudio={(item) => handleTrackAction(item, [], selectedPlaylist.image)}
                 />
             )}
         </div>

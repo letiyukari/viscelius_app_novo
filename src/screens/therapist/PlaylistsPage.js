@@ -4,11 +4,14 @@ import { db } from '../../firebase';
 import { collection, onSnapshot, query, where, deleteDoc, doc } from 'firebase/firestore';
 import { PlusIcon, MusicIcon, XIcon } from '../../common/Icons'; // Mantendo esta importação
 import AddPlaylistModal from '../../components/therapist/AddPlaylistModal';
-import PlaylistSongsModal from '../../components/therapist/PlaylistSongsModal';
-import Notification from '../../components/common/Notification'; // <-- CORREÇÃO: Assumindo que está em components/common/
+import PlaylistContentModal from '../../components/therapist/PlaylistContentModal';
+import Notification from '../../components/common/Notification';
+import { useAuth } from '../../context/AuthContext';
 
 const TherapistPlaylistsPage = ({ user }) => {
     const therapistUid = user?.uid;
+    const { loading: authLoading } = useAuth();
+    
     const [playlists, setPlaylists] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [sortOrder, setSortOrder] = useState('name-asc'); 
@@ -20,31 +23,56 @@ const TherapistPlaylistsPage = ({ user }) => {
     const [notification, setNotification] = useState({ message: '', type: '' });
 
     useEffect(() => {
+        // Se o Auth ainda está carregando, não decidir nada — aguarde.
+        if (authLoading) return;
+
         if (!therapistUid) {
+            console.log("Nenhum ID de terapeuta disponível após autenticação");
             setPlaylists([]);
             setLoading(false);
+            setError("ID do terapeuta não encontrado. Por favor, faça login novamente.");
             return undefined;
         }
+
+        console.log("Tentando carregar playlists para terapeuta:", therapistUid);
         setLoading(true);
         setError(null);
-        const playlistsCollectionRef = collection(db, 'playlists');
-        const q = query(playlistsCollectionRef, where("therapistUid", "==", therapistUid));
-        
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
-            const playlistsData = [];
-            querySnapshot.forEach((doc) => {
-                playlistsData.push({ id: doc.id, ...doc.data() });
-            });
-            setPlaylists(playlistsData);
-            setLoading(false);
-        }, (err) => {
-            console.error("Erro ao carregar playlists:", err);
-            setError("Não foi possível carregar as playlists.");
-            setLoading(false);
-        });
 
-        return () => unsubscribe();
-    }, [therapistUid]);
+        try {
+            const playlistsCollectionRef = collection(db, 'playlists');
+            const q = query(playlistsCollectionRef, where("therapistUid", "==", therapistUid));
+            
+            const unsubscribe = onSnapshot(q, (querySnapshot) => {
+                try {
+                    const playlistsData = [];
+                    querySnapshot.forEach((doc) => {
+                        playlistsData.push({ id: doc.id, ...doc.data() });
+                    });
+                    console.log("Playlists carregadas com sucesso:", playlistsData.length);
+                    setPlaylists(playlistsData);
+                    setLoading(false);
+                    setError(null);
+                } catch (err) {
+                    console.error("Erro ao processar dados das playlists:", err);
+                    setError("Erro ao processar dados das playlists: " + err.message);
+                    setLoading(false);
+                }
+            }, (err) => {
+                console.error("Erro ao observar playlists:", err);
+                setError("Erro ao carregar playlists: " + err.message);
+                setLoading(false);
+            });
+
+            return () => {
+                console.log("Limpando observador de playlists");
+                unsubscribe();
+            };
+        } catch (err) {
+            console.error("Erro ao configurar observador de playlists:", err);
+            setError("Erro ao configurar carregamento de playlists: " + err.message);
+            setLoading(false);
+        }
+    }, [therapistUid, authLoading]);
 
     // Lógica de filtragem e ordenação combinada
     const displayedPlaylists = useMemo(() => {
@@ -255,7 +283,7 @@ const TherapistPlaylistsPage = ({ user }) => {
                                 >
                                     <XIcon style={{ width: 16, height: 16 }} />
                                 </button>
-                                <img src={playlist.imageUrl} alt={playlist.name} style={styles.cardImage} />
+                                <img src={playlist.image || playlist.imageUrl || ''} alt={playlist.name} style={styles.cardImage} />
                                 <div style={styles.cardContent}>
                                     <h3 style={styles.cardTitle}>{playlist.name}</h3>
                                     <p style={styles.cardDesc}>{playlist.desc}</p>
@@ -277,11 +305,12 @@ const TherapistPlaylistsPage = ({ user }) => {
                 setNotification={setNotification}
             />
             {selectedPlaylist && (
-                <PlaylistSongsModal
+                <PlaylistContentModal
                     isOpen={isSongsModalOpen}
                     onClose={() => setIsSongsModalOpen(false)}
                     playlist={selectedPlaylist}
                     setNotification={setNotification}
+                    user={user}
                 />
             )}
         </div>

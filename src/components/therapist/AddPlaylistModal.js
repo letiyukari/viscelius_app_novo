@@ -1,23 +1,41 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { db } from '../../firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
 
 const AddPlaylistModal = ({ isOpen, onClose, therapistId, setNotification }) => {
     const [name, setName] = useState('');
     const [desc, setDesc] = useState('');
     const [imageUrl, setImageUrl] = useState('');
+    // Nota: removemos a seleção obrigatória de paciente — permitimos criar playlists sem paciente.
+
+    // Antes: carregávamos pacientes do terapeuta para permitir selecionar um paciente ao criar a playlist.
+    // Agora esse vínculo não é mais obrigatório, então não precisamos carregar a lista aqui.
+
+    // Helper para validar os dados antes de salvar
+    const validatePlaylistData = () => {
+        if (!name?.trim()) return 'Nome da playlist é obrigatório';
+        if (!desc?.trim()) return 'Descrição é obrigatória';
+        if (!imageUrl?.trim()) return 'URL da imagem é obrigatória';
+        // paciente não é mais obrigatório
+        return null; // Sem erros
+    };
 
     const handleSave = async () => {
-        if (!name || !desc || !imageUrl) {
-            setNotification({ message: 'Por favor, preencha todos os campos.', type: 'error' });
+        const error = validatePlaylistData();
+        if (error) {
+            setNotification({ message: error, type: 'error' });
             return;
         }
 
+        // Não exigimos paciente — gravamos campos de paciente como null quando não fornecido.
         const playlistData = {
-            name: name,
-            desc: desc,
-            image: imageUrl,
+            name: name.trim(),
+            desc: desc.trim(),
+            image: imageUrl.trim(),
             therapistUid: therapistId,
+            patientUid: null,
+            patientName: null,
+            patientEmail: null,
             createdAt: serverTimestamp()
         };
 
@@ -48,6 +66,7 @@ const AddPlaylistModal = ({ isOpen, onClose, therapistId, setNotification }) => 
         inputGroup: { display: 'flex', flexDirection: 'column' },
         label: { marginBottom: '8px', color: '#374151', fontSize: '14px', fontWeight: '600' },
         input: { width: '100%', padding: '12px 14px', fontSize: '16px', border: '1px solid #D1D5DB', borderRadius: '8px', boxSizing: 'border-box' },
+        select: { width: '100%', padding: '12px 14px', fontSize: '16px', border: '1px solid #D1D5DB', borderRadius: '8px', boxSizing: 'border-box', background: 'white' },
         footer: { display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid #E5E7EB' },
         button: { padding: '12px 24px', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: '600', cursor: 'pointer', transition: 'background-color 0.2s' },
         cancelButton: { backgroundColor: '#F3F4F6', color: '#374151' },
@@ -74,6 +93,8 @@ const AddPlaylistModal = ({ isOpen, onClose, therapistId, setNotification }) => 
                         <label htmlFor="imageUrl" style={styles.label}>URL da Imagem de Capa</label>
                         <input type="text" id="imageUrl" style={styles.input} value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} />
                     </div>
+
+                    {/* Agora a playlist pode ser criada sem selecionar paciente */}
                 </div>
                 <div style={styles.footer}>
                     <button style={{ ...styles.button, ...styles.cancelButton }} onClick={onClose}>Cancelar</button>
