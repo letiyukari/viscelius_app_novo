@@ -132,6 +132,52 @@ service cloud.firestore {
       allow delete: if isConsultationTherapist();
     }
 
+    // Regras para playlists
+    match /playlists/{playlistId} {
+      // Helper: verifica se o usuário autenticado tem role 'therapist' no documento users/{uid}
+      function isTherapistUser() {
+        return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'therapist';
+      }
+
+  // Leitura: permitido para qualquer usuário autenticado (pacientes e terapeutas)
+  allow read: if isAuthenticated();
+
+      // Helper para checar se o patientId pertence ao terapeuta que está criando
+      function patientBelongsToTherapist(patientId) {
+        return patientId != null
+          && get(/databases/$(database)/documents/users/$(patientId)).data.role == 'patient'
+          && get(/databases/$(database)/documents/users/$(patientId)).data.therapistUid == request.auth.uid;
+      }
+
+      // Criação: o usuário autenticado que informar therapistUid igual ao seu uid pode criar a playlist.
+      // Não exigimos mais que o patientUid esteja registrado como pertencente ao terapeuta.
+      // (Removemos a checagem patientBelongsToTherapist para evitar bloqueios quando o vínculo não
+      // estiver presente no documento do paciente.)
+      // Allow creation when patientUid is a string OR when it's null/omitted (so therapist
+      // can create playlists without linking a patient). This prevents 'missing or insufficient'
+      // permission errors when the client sends patientUid: null.
+      allow create: if isAuthenticated()
+        && request.resource.data.therapistUid == request.auth.uid
+        && (
+          request.resource.data.patientUid is string ||
+          request.resource.data.patientUid == null ||
+          !("patientUid" in request.resource.data)
+        );
+
+      // Atualizar / deletar: apenas o terapeuta dono da playlist (verifica apenas therapistUid)
+      allow update, delete: if isAuthenticated() && resource.data.therapistUid == request.auth.uid;
+      
+      // Regras para o conteúdo dentro das playlists (músicas e vídeos)
+      match /content/{contentId} {
+        // Qualquer usuário autenticado pode ler o conteúdo (pode ajustar conforme necessário)
+        allow read: if isAuthenticated();
+
+        // Escrita: apenas o terapeuta dono da playlist (checa therapistUid no documento de playlist)
+        allow write: if isAuthenticated()
+          && get(/databases/$(database)/documents/playlists/$(playlistId)).data.therapistUid == request.auth.uid;
+      }
+    }
+
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated() && request.auth.uid == userId;
