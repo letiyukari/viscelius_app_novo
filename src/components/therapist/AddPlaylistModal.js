@@ -1,64 +1,164 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { db } from '../../firebase';
-import { collection, addDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import AvatarUploader from '../profile/AvatarUploader'; // Importa o uploader de avatar
+
+// Constantes do Cloudinary
+const CLOUDINARY_CLOUD_NAME = "de0avsta1"; 
+const CLOUDINARY_UPLOAD_PRESET = "viscelius_app_uploads";
 
 const AddPlaylistModal = ({ isOpen, onClose, therapistId, setNotification }) => {
+    // Estados da Playlist
     const [name, setName] = useState('');
     const [desc, setDesc] = useState('');
-    const [imageUrl, setImageUrl] = useState('');
-    // Nota: removemos a seleção obrigatória de paciente — permitimos criar playlists sem paciente.
+    const [imageFile, setImageFile] = useState(null);
+    const [imagePreviewUrl, setImagePreviewUrl] = useState(''); 
+    
+    // Estados do Conteúdo
+    const [contentType, setContentType] = useState('videoLink'); // 'videoLink', 'audioFile'
+    const [contentName, setContentName] = useState('');
+    const [contentArtist, setContentArtist] = useState('');
+    const [contentVideoUrl, setContentVideoUrl] = useState(''); // Para link do YouTube
+    const [contentMp3File, setContentMp3File] = useState(null); // Para ficheiro MP3
 
-    // Antes: carregávamos pacientes do terapeuta para permitir selecionar um paciente ao criar a playlist.
-    // Agora esse vínculo não é mais obrigatório, então não precisamos carregar a lista aqui.
+    // Estado de Loading
+    const [isUploading, setIsUploading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(''); // Mensagem de feedback
 
-    // Helper para validar os dados antes de salvar
-    const validatePlaylistData = () => {
+    // --- LÓGICA DE UPLOAD ---
+
+    // Função genérica de upload para o Cloudinary
+    const uploadToCloudinary = async (file, resourceType = 'image') => {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+
+        // O endpoint é diferente para imagens vs. áudio/vídeo
+        const endpoint = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`;
+
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            body: formData,
+        });
+
+        const data = await response.json();
+        if (data.secure_url) {
+            return data.secure_url;
+        } else {
+            throw new Error(`Falha no upload do ${resourceType} para o Cloudinary`);
+        }
+    };
+
+    // --- LÓGICA DE VALIDAÇÃO E SALVAMENTO ---
+
+    const validateData = () => {
         if (!name?.trim()) return 'Nome da playlist é obrigatório';
         if (!desc?.trim()) return 'Descrição é obrigatória';
-        if (!imageUrl?.trim()) return 'URL da imagem é obrigatória';
-        // paciente não é mais obrigatório
+        if (!imageFile) return 'Uma imagem de capa é obrigatória';
+        
+        // Validação do conteúdo
+        if (!contentName?.trim()) return 'Nome do conteúdo é obrigatório';
+        if (contentType === 'videoLink' && !contentVideoUrl?.trim()) return 'URL do vídeo é obrigatório';
+        if (contentType === 'audioFile' && !contentMp3File) return 'Ficheiro MP3 é obrigatório';
+        
         return null; // Sem erros
     };
 
     const handleSave = async () => {
-        const error = validatePlaylistData();
+        const error = validateData();
         if (error) {
             setNotification({ message: error, type: 'error' });
             return;
         }
 
-        // Não exigimos paciente — gravamos campos de paciente como null quando não fornecido.
-        const playlistData = {
-            name: name.trim(),
-            desc: desc.trim(),
-            image: imageUrl.trim(),
-            therapistUid: therapistId,
-            patientUid: null,
-            patientName: null,
-            patientEmail: null,
-            createdAt: serverTimestamp()
-        };
-
-        console.log("Tentando salvar a playlist com os seguintes dados:", playlistData);
+        setIsUploading(true);
 
         try {
-            const docRef = await addDoc(collection(db, "playlists"), playlistData);
-            console.log("Playlist salva com sucesso com o ID: ", docRef.id);
+            // 1. Upload da Imagem de Capa
+            setUploadProgress('A carregar imagem de capa...');
+            const imageUrl = await uploadToCloudinary(imageFile, 'image');
+
+            // 2. Upload do Conteúdo (se for ficheiro MP3)
+            let contentUrl = '';
+            let contentTypeFirebase = 'video'; // por defeito
+
+            if (contentType === 'audioFile') {
+                contentTypeFirebase = 'audio';
+                setUploadProgress('A carregar ficheiro de áudio (MP3)...');
+                // O PatientDetailModal.js usava 'video/upload' para MP3, vamos manter
+                contentUrl = await uploadToCloudinary(contentMp3File, 'video'); 
+            } else { // 'videoLink'
+                contentTypeFirebase = 'video';
+                contentUrl = contentVideoUrl.trim();
+            }
+
+            // 3. Criar a Playlist no Firestore
+            setUploadProgress('A salvar playlist...');
+            const playlistData = {
+                name: name.trim(),
+                desc: desc.trim(),
+                image: imageUrl,
+                therapistUid: therapistId,
+                patientUid: null,
+                createdAt: serverTimestamp()
+            };
+            const playlistDocRef = await addDoc(collection(db, "playlists"), playlistData);
             
+            // 4. Adicionar o Conteúdo na subcoleção da Playlist
+            setUploadProgress('A salvar conteúdo...');
+            const contentData = {
+                name: contentName.trim(),
+                artist: contentArtist.trim(),
+                type: contentTypeFirebase,
+                ...(contentTypeFirebase === 'audio' ? { url: contentUrl } : { videoUrl: contentUrl }),
+                createdAt: serverTimestamp() // Usar serverTimestamp aqui também
+            };
+            await addDoc(collection(db, 'playlists', playlistDocRef.id, 'content'), contentData);
+
             setNotification({ message: 'Playlist criada com sucesso!', type: 'success' });
-            onClose();
+            handleClose(); // Limpa e fecha o modal
             
         } catch (error) {
-            console.error("Erro detalhado ao criar playlist no Firestore:", error);
-            setNotification({ message: `Ocorreu um erro ao criar a playlist: ${error.message}`, type: 'error' });
+            console.error("Erro detalhado ao criar playlist:", error);
+            setNotification({ message: `Ocorreu um erro: ${error.message}`, type: 'error' });
+        } finally {
+            setIsUploading(false);
+            setUploadProgress('');
         }
+    };
+    
+    // --- LÓGICA DO COMPONENTE ---
+
+    const handleFileSelected = (file) => {
+        if (file) {
+            setImageFile(file);
+            setImagePreviewUrl(URL.createObjectURL(file)); 
+        }
+    };
+    
+    // Limpa o formulário ao fechar
+    const handleClose = () => {
+        if (isUploading) return; // Não deixa fechar durante o upload
+        setName('');
+        setDesc('');
+        setImageFile(null);
+        setImagePreviewUrl('');
+        setContentName('');
+        setContentArtist('');
+        setContentVideoUrl('');
+        setContentMp3File(null);
+        setContentType('videoLink');
+        setIsUploading(false);
+        setUploadProgress('');
+        onClose();
     };
 
     if (!isOpen) { return null; }
     
+    // Estilos (combinados)
     const styles = {
-        overlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
-        modal: { backgroundColor: '#FFFFFF', padding: '2rem', borderRadius: '16px', width: '90%', maxWidth: '500px', boxShadow: '0 10px 30px rgba(0,0,0,0.1)' },
+        overlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, overflowY: 'auto' },
+        modal: { backgroundColor: '#FFFFFF', margin: '2rem 0', padding: '2rem', borderRadius: '16px', width: '90%', maxWidth: '550px', boxShadow: '0 10px 30px rgba(0,0,0,0.1)' },
         header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid #E5E7EB', paddingBottom: '1rem' },
         title: { fontSize: '1.5rem', fontWeight: '600', color: '#1F2937', margin: 0 },
         closeButton: { background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#9CA3AF' },
@@ -70,35 +170,95 @@ const AddPlaylistModal = ({ isOpen, onClose, therapistId, setNotification }) => 
         footer: { display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid #E5E7EB' },
         button: { padding: '12px 24px', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: '600', cursor: 'pointer', transition: 'background-color 0.2s' },
         cancelButton: { backgroundColor: '#F3F4F6', color: '#374151' },
-        saveButton: { backgroundColor: '#8B5CF6', color: 'white' }
+        saveButton: { backgroundColor: '#8B5CF6', color: 'white', opacity: isUploading ? 0.7 : 1 },
+        avatarContainer: { display: 'flex', justifyContent: 'center', marginBottom: '1rem' },
+        sectionTitle: { fontSize: '1.1rem', fontWeight: '600', color: '#374151', marginTop: '1.5rem', marginBottom: '0.5rem', borderTop: '1px solid #E5E7EB', paddingTop: '1.5rem' },
+        uploadProgressText: { textAlign: 'center', color: '#8B5CF6', fontWeight: '600', height: '20px' }
     };
 
     return (
-        <div style={styles.overlay} onClick={onClose}>
+        <div style={styles.overlay}>
             <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
                 <div style={styles.header}>
                     <h2 style={styles.title}>Criar Nova Playlist</h2>
-                    <button style={styles.closeButton} onClick={onClose}>&times;</button>
+                    <button style={styles.closeButton} onClick={handleClose} disabled={isUploading}>&times;</button>
                 </div>
+                
                 <div style={styles.form}>
+                    
+                    <h3 style={styles.sectionTitle}>1. Detalhes da Playlist</h3>
+                    
+                    <div style={styles.avatarContainer}>
+                        <AvatarUploader
+                            src={imagePreviewUrl}
+                            uploading={isUploading}
+                            onFileSelected={handleFileSelected}
+                            size={150}
+                            disabled={isUploading}
+                            initials="PL" 
+                        />
+                    </div>
+                    
                     <div style={styles.inputGroup}>
                         <label htmlFor="name" style={styles.label}>Nome da Playlist</label>
-                        <input type="text" id="name" style={styles.input} value={name} onChange={(e) => setName(e.target.value)} />
+                        <input type="text" id="name" style={styles.input} value={name} onChange={(e) => setName(e.target.value)} disabled={isUploading} />
                     </div>
                     <div style={styles.inputGroup}>
                         <label htmlFor="desc" style={styles.label}>Descrição</label>
-                        <input type="text" id="desc" style={styles.input} value={desc} onChange={(e) => setDesc(e.target.value)} />
-                    </div>
-                    <div style={styles.inputGroup}>
-                        <label htmlFor="imageUrl" style={styles.label}>URL da Imagem de Capa</label>
-                        <input type="text" id="imageUrl" style={styles.input} value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} />
+                        <input type="text" id="desc" style={styles.input} value={desc} onChange={(e) => setDesc(e.target.value)} disabled={isUploading} />
                     </div>
 
-                    {/* Agora a playlist pode ser criada sem selecionar paciente */}
+                    {/* --- Secção de Conteúdo --- */}
+                    <h3 style={styles.sectionTitle}>2. Primeiro Conteúdo</h3>
+
+                    <div style={styles.inputGroup}>
+                        <label htmlFor="contentType" style={styles.label}>Tipo de Conteúdo</label>
+                        <select id="contentType" style={styles.select} value={contentType} onChange={(e) => setContentType(e.target.value)} disabled={isUploading}>
+                            <option value="videoLink">Link de Vídeo (YouTube)</option>
+                            <option value="audioFile">Ficheiro de Áudio (MP3)</option>
+                        </select>
+                    </div>
+
+                    <div style={styles.inputGroup}>
+                        <label htmlFor="contentName" style={styles.label}>Nome do Conteúdo</label>
+                        <input type="text" id="contentName" style={styles.input} value={contentName} onChange={(e) => setContentName(e.target.value)} disabled={isUploading} />
+                    </div>
+                    
+                    <div style={styles.inputGroup}>
+                        <label htmlFor="contentArtist" style={styles.label}>Artista/Autor (Opcional)</label>
+                        <input type="text" id="contentArtist" style={styles.input} value={contentArtist} onChange={(e) => setContentArtist(e.target.value)} disabled={isUploading} />
+                    </div>
+
+                    {/* Input Condicional (MP3 ou Link) */}
+                    {contentType === 'videoLink' ? (
+                        <div style={styles.inputGroup}>
+                            <label htmlFor="contentVideoUrl" style={styles.label}>URL do Vídeo</label>
+                            <input type="text" id="contentVideoUrl" style={styles.input} value={contentVideoUrl} onChange={(e) => setContentVideoUrl(e.target.value)} disabled={isUploading} placeholder="https://www.youtube.com/watch?v=..." />
+                        </div>
+                    ) : (
+                        <div style={styles.inputGroup}>
+                            <label htmlFor="contentMp3File" style={styles.label}>Ficheiro MP3</label>
+                            <input type="file" id="contentMp3File" style={styles.input} accept=".mp3" onChange={(e) => setContentMp3File(e.target.files[0])} disabled={isUploading} />
+                        </div>
+                    )}
+
                 </div>
+
+                <div style={styles.uploadProgressText}>
+                    {isUploading ? uploadProgress : ''}
+                </div>
+
                 <div style={styles.footer}>
-                    <button style={{ ...styles.button, ...styles.cancelButton }} onClick={onClose}>Cancelar</button>
-                    <button style={{ ...styles.button, ...styles.saveButton }} onClick={handleSave}>Salvar Playlist</button>
+                    <button style={{ ...styles.button, ...styles.cancelButton }} onClick={handleClose} disabled={isUploading}>
+                        Cancelar
+                    </button>
+                    <button 
+                        style={{ ...styles.button, ...styles.saveButton }} 
+                        onClick={handleSave} 
+                        disabled={isUploading}
+                    >
+                        {isUploading ? 'Salvando...' : 'Salvar Playlist'}
+                    </button>
                 </div>
             </div>
         </div>

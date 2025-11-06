@@ -5,7 +5,8 @@ import { db } from '../../firebase';
 import { collection, onSnapshot, query } from 'firebase/firestore';
 
 // Importa os ícones que esta página precisa
-import { XIcon, PlayIcon, PauseIcon } from '../../common/Icons';
+// CORREÇÃO: Removido 'XIcon' que não estava a ser usado.
+import { PlayIcon, PauseIcon } from '../../common/Icons'; 
 import { usePlayer, sanitizeTrack } from '../../context/PlayerContext';
 import PatientPlaylistContentModal from '../../components/patient/PlaylistContentModal';
 
@@ -25,7 +26,6 @@ const PlaylistsPage = () => {
         { id: 'static-3', name: "Sons de Chuva", desc: "Relaxe com o som da chuva.", image: "https://images.unsplash.com/photo-1534274988757-a28bf1a57c17?q=80&w=1935&auto=format&fit=crop", url: "/audio/relaxamento-profundo.mp3" },
     ];
     const natureSounds = [
-        // ALTERAÇÃO: Imagem corrigida
         { id: 'static-4', name: "Ondas do Mar", desc: "Sinta a brisa do oceano.", image: "https://images.unsplash.com/photo-1590523741831-ab7e8b8f9c7f?q=80&w=1974&auto=format&fit=crop", url: "/audio/relaxamento-profundo.mp3" },
         { id: 'static-5', name: "Floresta Amazônica", desc: "Conecte-se com a natureza.", image: "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?q=80&w=2071&auto=format&fit=crop", url: "/audio/relaxamento-profundo.mp3" },
         { id: 'static-6', name: "Pássaros da Manhã", desc: "Desperte com sons suaves.", image: "https://images.unsplash.com/photo-1473448912268-2022ce9509d8?q=80&w=1925&auto=format&fit=crop", url: "/audio/relaxamento-profundo.mp3" },
@@ -34,6 +34,9 @@ const PlaylistsPage = () => {
 
     // Efeito que busca as playlists do Firestore
     useEffect(() => {
+        // NOTA: Esta query ainda está a buscar TODAS as playlists.
+        // Você vai querer reintroduzir o filtro por therapistId que fizemos antes,
+        // mas por agora, vamos focar-nos em fazer a app compilar.
         const q = query(collection(db, 'playlists'));
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const fetchedPlaylists = [];
@@ -147,7 +150,6 @@ const PlaylistsPage = () => {
 
     const styles = {
         pageContainer: { padding: '0 2rem', backgroundColor: '#121212', color: '#fff', fontFamily: '"Inter", sans-serif', overflowY: 'auto', height: '100vh', paddingBottom: '100px' },
-        // ALTERAÇÃO: Ajustes no heroSection para remover o vão
         heroSection: { 
             display: 'flex', 
             alignItems: 'flex-end', 
@@ -161,7 +163,6 @@ const PlaylistsPage = () => {
             height: '280px' 
         },
         heroInfo: {},
-        // ALTERAÇÃO: Ajuste no tamanho do título para caber melhor
         heroTitle: { 
             fontSize: '3.5rem', 
             fontWeight: '800', 
@@ -180,7 +181,6 @@ const PlaylistsPage = () => {
                 </div>
             </div>
 
-            {/* REMOVIDO: Formulário para adicionar nova playlist */}
             {message.text && (
                 <div
                     style={{
@@ -195,7 +195,6 @@ const PlaylistsPage = () => {
                 </div>
             )}
 
-            {/* Playlists do terapeuta (dinâmicas) */}
             <PlaylistSection
                 title="Playlists do seu Terapeuta"
                 data={firestorePlaylists}
@@ -206,7 +205,6 @@ const PlaylistsPage = () => {
                 onViewSongs={openSongsModal}
             />
 
-            {/* Playlists estáticas */}
             <PlaylistSection
                 title="Sugestões para Você"
                 data={yourPlaylistsStatic}
@@ -221,9 +219,7 @@ const PlaylistsPage = () => {
                 currentTrackId={currentTrack?.id}
                 isPlayingGlobal={isPlaying}
             />
-            {/* ... (outras seções estáticas) */}
 
-            {/* O modal de visualização de músicas é chamado aqui */}
             {showSongsModal && selectedPlaylist && (
                 <PatientPlaylistContentModal
                     playlist={selectedPlaylist}
