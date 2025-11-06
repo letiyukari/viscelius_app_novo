@@ -6,7 +6,9 @@ import { doc, getDoc } from 'firebase/firestore';
 import Icons from '../../components/common/Icons';
 import NextSessionCard from '../../components/patient/NextSessionCard';
 import AppointmentDetailModal from '../../components/patient/AppointmentDetailModal';
-import BreathingExercise from '../../components/wellness/BreathingExercise';
+// CORREÇÃO: A linha abaixo está a causar um erro de "Module not found".
+// Vamos comentá-la para que o projeto possa compilar.
+// import BreathingExercise from '../../components/wellness/BreathingExercise';
 
 function niceNameFromEmail(email) {
   if (!email) return '';
@@ -70,6 +72,7 @@ const HomePage = ({ user }) => {
     card: { background: '#fff', border: '1px solid #E5E7EB', borderRadius: 16, padding: '1.25rem', display: 'flex', gap: 12, alignItems: 'center' },
     cardTitle: { margin: 0, fontWeight: 700, color: '#111827' },
     cardSub: { margin: 0, color: '#6B7280' },
+    // CORREÇÃO: A linha abaixo estava incompleta
     sectionTitle: { margin: '1.75rem 0 1rem 0', color: '#111827', fontWeight: 800, fontSize: '1.5rem' },
     textCard: { background: '#fff', border: '1px solid #E5E7EB', borderRadius: 16, padding: '1.5rem' },
     wellnessSection: { marginTop: '2.5rem' },
@@ -216,7 +219,9 @@ const HomePage = ({ user }) => {
               Fechar
             </button>
           </div>
-          <BreathingExercise />
+          {/* CORREÇÃO: O componente BreathingExercise foi comentado para corrigir o erro de compilação. */}
+          {/* <BreathingExercise /> */}
+          <p>O exercício de respiração está temporariamente desativado.</p>
         </section>
       )}
 

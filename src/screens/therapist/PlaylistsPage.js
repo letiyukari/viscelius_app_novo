@@ -2,9 +2,12 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { db } from '../../firebase';
 import { collection, onSnapshot, query, where, deleteDoc, doc } from 'firebase/firestore';
-import { PlusIcon, MusicIcon, XIcon } from '../../common/Icons'; // Mantendo esta importação
+// ATUALIZAÇÃO: Removemos o EditIcon, já não é necessário
+import { PlusIcon, MusicIcon, XIcon } from '../../common/Icons'; 
 import AddPlaylistModal from '../../components/therapist/AddPlaylistModal';
 import PlaylistContentModal from '../../components/therapist/PlaylistContentModal';
+// REMOVIDO: O EditPlaylistModal já não existe
+// import EditPlaylistModal from '../../components/therapist/EditPlaylistModal'; 
 import Notification from '../../components/common/Notification';
 import { useAuth } from '../../context/AuthContext';
 
@@ -20,65 +23,52 @@ const TherapistPlaylistsPage = ({ user }) => {
     const [isAddPlaylistModalOpen, setIsAddPlaylistModalOpen] = useState(false);
     const [isSongsModalOpen, setIsSongsModalOpen] = useState(false);
     const [selectedPlaylist, setSelectedPlaylist] = useState(null);
+    // REMOVIDO: O estado de edição já não existe
+    // const [editingPlaylist, setEditingPlaylist] = useState(null); 
     const [notification, setNotification] = useState({ message: '', type: '' });
+    const [hoveredCardId, setHoveredCardId] = useState(null);
 
     useEffect(() => {
-        // Se o Auth ainda está carregando, não decidir nada — aguarde.
+        // ... (o useEffect de carregar playlists continua igual)
         if (authLoading) return;
-
         if (!therapistUid) {
-            console.log("Nenhum ID de terapeuta disponível após autenticação");
             setPlaylists([]);
             setLoading(false);
             setError("ID do terapeuta não encontrado. Por favor, faça login novamente.");
             return undefined;
         }
-
-        console.log("Tentando carregar playlists para terapeuta:", therapistUid);
         setLoading(true);
         setError(null);
-
         try {
             const playlistsCollectionRef = collection(db, 'playlists');
             const q = query(playlistsCollectionRef, where("therapistUid", "==", therapistUid));
-            
             const unsubscribe = onSnapshot(q, (querySnapshot) => {
                 try {
                     const playlistsData = [];
                     querySnapshot.forEach((doc) => {
                         playlistsData.push({ id: doc.id, ...doc.data() });
                     });
-                    console.log("Playlists carregadas com sucesso:", playlistsData.length);
                     setPlaylists(playlistsData);
                     setLoading(false);
                     setError(null);
                 } catch (err) {
-                    console.error("Erro ao processar dados das playlists:", err);
                     setError("Erro ao processar dados das playlists: " + err.message);
                     setLoading(false);
                 }
             }, (err) => {
-                console.error("Erro ao observar playlists:", err);
                 setError("Erro ao carregar playlists: " + err.message);
                 setLoading(false);
             });
-
-            return () => {
-                console.log("Limpando observador de playlists");
-                unsubscribe();
-            };
+            return () => unsubscribe();
         } catch (err) {
-            console.error("Erro ao configurar observador de playlists:", err);
             setError("Erro ao configurar carregamento de playlists: " + err.message);
             setLoading(false);
         }
     }, [therapistUid, authLoading]);
 
-    // Lógica de filtragem e ordenação combinada
+    // Lógica de filtragem e ordenação (continua igual)
     const displayedPlaylists = useMemo(() => {
         let filtered = playlists;
-
-        // 1. Filtragem (pela busca)
         if (searchTerm) {
             const lowerCaseSearch = searchTerm.toLowerCase();
             filtered = playlists.filter(playlist => 
@@ -86,8 +76,6 @@ const TherapistPlaylistsPage = ({ user }) => {
                 (playlist.desc || '').toLowerCase().includes(lowerCaseSearch)
             );
         }
-
-        // 2. Ordenação (pelo seletor)
         return filtered.slice().sort((a, b) => {
             if (sortOrder === 'name-asc') {
                 return (a.name || '').localeCompare(b.name || '');
@@ -95,13 +83,11 @@ const TherapistPlaylistsPage = ({ user }) => {
             if (sortOrder === 'name-desc') {
                 return (b.name || '').localeCompare(a.name || '');
             }
-            // Ordenação por data de criação (mais nova primeiro)
             if (sortOrder === 'date-desc') {
                 const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
                 const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
                 return dateB - dateA;
             }
-            // Ordenação por data de criação (mais antiga primeiro)
             if (sortOrder === 'date-asc') {
                 const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
                 const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
@@ -111,10 +97,13 @@ const TherapistPlaylistsPage = ({ user }) => {
         });
     }, [playlists, searchTerm, sortOrder]); 
 
-    const handleOpenSongsModal = (playlist) => {
+    // ATUALIZAÇÃO: Clicar no card abre o modal de gestão (antigo "songs modal")
+    const handleOpenManageModal = (playlist) => {
         setSelectedPlaylist(playlist);
-        setIsSongsModalOpen(true);
+        setIsSongsModalOpen(true); // O "SongsModal" é agora o "ManageModal"
     };
+    
+    // REMOVIDO: A função handleOpenEditModal já não é necessária
 
     const handleDeletePlaylist = async (playlistId, event) => {
         event.stopPropagation();
@@ -132,7 +121,7 @@ const TherapistPlaylistsPage = ({ user }) => {
     const styles = {
         pageContainer: { padding: '2rem 3.5rem', backgroundColor: '#F9FAFB', fontFamily: '"Inter", sans-serif', minHeight: '100vh' },
         header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' },
-        title: { color: '#1F2937', fontSize: '2.2rem', fontWeight: '700', margin: '0' },
+        title: { color: '#1F2937', fontSize: '2.2rem', fontWeight: '700', margin: 0 },
         addButton: { backgroundColor: '#8B5CF6', color: 'white', border: 'none', padding: '12px 20px', borderRadius: '12px', cursor: 'pointer', fontWeight: '600', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px', transition: 'background-color 0.3s' },
         searchBar: {
             flexGrow: 1, 
@@ -185,9 +174,12 @@ const TherapistPlaylistsPage = ({ user }) => {
             alignItems: 'center', 
             justifyContent: 'center', 
             cursor: 'pointer',
-            transition: 'background-color 0.3s',
+            transition: 'background-color 0.3s, opacity 0.3s',
             zIndex: 10,
+            opacity: 0, // Escondido por defeito
         },
+        // REMOVIDO: O botão de editar já não existe
+        // editButton: { ... },
         songCount: {
             display: 'flex',
             alignItems: 'center',
@@ -199,7 +191,8 @@ const TherapistPlaylistsPage = ({ user }) => {
         }
     };
 
-    const handleCardHover = (e, enter) => {
+    const handleCardHover = (e, enter, playlistId) => {
+        setHoveredCardId(enter ? playlistId : null);
         if (enter) {
           e.currentTarget.style.transform = 'translateY(-5px)';
           e.currentTarget.style.boxShadow = '0 8px 20px rgba(0,0,0,0.08)';
@@ -229,7 +222,6 @@ const TherapistPlaylistsPage = ({ user }) => {
             </header>
 
             <div style={styles.controlsContainer}>
-                {/* Campo de Busca */}
                 <input
                     type="text"
                     placeholder="Buscar playlist por nome ou descrição..."
@@ -237,8 +229,6 @@ const TherapistPlaylistsPage = ({ user }) => {
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                 />
-
-                {/* Seletor de Ordenação */}
                 <select
                     style={styles.sortSelect}
                     value={sortOrder}
@@ -267,22 +257,27 @@ const TherapistPlaylistsPage = ({ user }) => {
                 <div style={styles.playlistGrid}>
                     {displayedPlaylists.map((playlist) => { 
                         const songCount = playlist.songs?.length || 0;
+                        const isHovered = hoveredCardId === playlist.id;
 
                         return (
                             <div 
                                 key={playlist.id} 
                                 style={styles.playlistCard}
-                                onMouseEnter={(e) => handleCardHover(e, true)}
-                                onMouseLeave={(e) => handleCardHover(e, false)}
-                                onClick={() => handleOpenSongsModal(playlist)}
+                                onMouseEnter={(e) => handleCardHover(e, true, playlist.id)}
+                                onMouseLeave={(e) => handleCardHover(e, false, playlist.id)}
+                                // ATUALIZAÇÃO: O clique no card abre o modal de gestão
+                                onClick={() => handleOpenManageModal(playlist)}
                             >
+                                {/* REMOVIDO: Botão de Editar */}
+                                
                                 <button 
-                                    style={styles.deleteButton}
+                                    style={{...styles.deleteButton, opacity: isHovered ? 1 : 0}}
                                     onClick={(e) => handleDeletePlaylist(playlist.id, e)}
                                     title="Apagar Playlist"
                                 >
                                     <XIcon style={{ width: 16, height: 16 }} />
                                 </button>
+                                
                                 <img src={playlist.image || playlist.imageUrl || ''} alt={playlist.name} style={styles.cardImage} />
                                 <div style={styles.cardContent}>
                                     <h3 style={styles.cardTitle}>{playlist.name}</h3>
@@ -304,6 +299,10 @@ const TherapistPlaylistsPage = ({ user }) => {
                 therapistId={user?.uid}
                 setNotification={setNotification}
             />
+            
+            {/* REMOVIDO: O EditPlaylistModal já não é chamado aqui */}
+
+            {/* ATUALIZAÇÃO: Este modal é agora o "Super-Modal" de Gestão */}
             {selectedPlaylist && (
                 <PlaylistContentModal
                     isOpen={isSongsModalOpen}
