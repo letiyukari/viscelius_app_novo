@@ -1,11 +1,10 @@
 // src/screens/therapist/DashboardPage.js
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { db } from '../../firebase';
-import { collection, doc, getDoc, onSnapshot, query, where } from 'firebase/firestore';
-import { UserIcon } from '../../common/Icons'; // Ícones necessários
-import Notification from '../../components/common/Notification'; // Assumindo components/common
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { UserIcon, MusicIcon } from '../../common/Icons'; 
+import Notification from '../../components/common/Notification';
 import PatientDetailModal from '../../components/therapist/PatientDetailModal';
-import BackButton from '../../components/common/BackButton';
 import { useNavigate } from 'react-router-dom';
 
 function niceNameFromEmail(email) {
@@ -21,7 +20,6 @@ const FILTER_MODES = {
   ALL_PATIENTS: 'ALL_PATIENTS',
 };
 
-// Função auxiliar para formatar a data (Assumindo que você tem uma)
 const formatDate = (date) => {
     if (!date) return 'Nenhuma';
     const d = date instanceof Date ? date : date.toDate();
@@ -32,19 +30,15 @@ const TherapistDashboardPage = ({ user }) => {
   const navigate = useNavigate();
   const therapistUid = user?.uid;
   const [viewingPatient, setViewingPatient] = useState(null);
-  const [patients, setPatients] = useState([]); // Lista completa de pacientes da plataforma
-  const [filteredPatients, setFilteredPatients] = useState([]); // Lista filtrada pela busca
-  const [searchTerm, setSearchTerm] = useState(''); // Texto da busca
-  const [filterMode, setFilterMode] = useState(FILTER_MODES.MY_PATIENTS); // Modo de filtro
+  const [patients, setPatients] = useState([]); 
+  const [filteredPatients, setFilteredPatients] = useState([]); 
+  const [searchTerm, setSearchTerm] = useState(''); 
+  const [filterMode, setFilterMode] = useState(FILTER_MODES.MY_PATIENTS); 
   const [loading, setLoading] = useState(true);
   const [notification, setNotification] = useState({ message: '', type: '' });
-  const [activityCache, setActivityCache] = useState({}); // Cache de atividade
+  const [activityCache, setActivityCache] = useState({}); 
 
-  // Função para buscar a atividade (última consulta/próximo agendamento)
-  // Assumindo que você tem uma função fetchPatientActivity no activityService.js
   const fetchActivity = useCallback(async (patientId) => {
-    // Para simplificar a reversão, vamos apenas retornar um objeto vazio
-    // Você pode reintroduzir a lógica do activityService.js aqui
     return { nextAppointment: null, lastConsultation: null };
   }, []);
 
@@ -58,7 +52,6 @@ const TherapistDashboardPage = ({ user }) => {
     setLoading(true);
     let q;
     
-    // Query condicional para filtrar por modo
     if (filterMode === FILTER_MODES.MY_PATIENTS) {
       q = query(
         collection(db, 'users'),
@@ -89,7 +82,7 @@ const TherapistDashboardPage = ({ user }) => {
     return () => unsubscribe();
   }, [therapistUid, filterMode]);
 
-  // Efeito para carregar atividades (mantido, mas simplificado na fetchActivity)
+  // Efeito para carregar atividades
   useEffect(() => {
     if (patients.length > 0) {
       patients.forEach(patient => {
@@ -118,7 +111,7 @@ const TherapistDashboardPage = ({ user }) => {
         ? FILTER_MODES.ALL_PATIENTS 
         : FILTER_MODES.MY_PATIENTS
     );
-    setSearchTerm(''); // Limpa a busca ao trocar de modo
+    setSearchTerm(''); 
   };
 
   const renderActivity = (patientId) => {
@@ -137,75 +130,58 @@ const TherapistDashboardPage = ({ user }) => {
     );
   };
 
-  // Estilos (Revertidos para o essencial)
+  // Estilos (mantidos com os botões)
   const styles = {
     pageContainer: { padding: '2rem 3.5rem', backgroundColor: '#F9FAFB', fontFamily: '"Inter", sans-serif', minHeight: '100vh' },
     header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' },
     title: { color: '#1F2937', fontSize: '2.2rem', fontWeight: '700', margin: 0 },
     searchFilterContainer: { display: 'flex', gap: '10px', marginBottom: '1.5rem', alignItems: 'center' },
-    searchBar: {
-      flexGrow: 1,
-      padding: '12px 15px',
-      borderRadius: '12px',
-      border: '1px solid #E5E7EB',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-      fontSize: '1rem',
-    },
-    filterButton: {
-      padding: '12px 20px',
-      borderRadius: '12px',
-      border: 'none',
-      cursor: 'pointer',
-      fontWeight: '600',
-      fontSize: '1rem',
-      backgroundColor: filterMode === FILTER_MODES.MY_PATIENTS ? '#8B5CF6' : '#E5E7EB',
-      color: filterMode === FILTER_MODES.MY_PATIENTS ? 'white' : '#1F2937',
-      transition: 'background-color 0.3s, color 0.3s',
-    },
-    patientGrid: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-      gap: '20px',
-    },
+    searchBar: { flexGrow: 1, padding: '12px 15px', borderRadius: '12px', border: '1px solid #E5E7EB', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', fontSize: '1rem' },
+    filterButton: { padding: '12px 20px', borderRadius: '12px', border: 'none', cursor: 'pointer', fontWeight: '600', fontSize: '1rem', backgroundColor: filterMode === FILTER_MODES.MY_PATIENTS ? '#8B5CF6' : '#E5E7EB', color: filterMode === FILTER_MODES.MY_PATIENTS ? 'white' : '#1F2937', transition: 'background-color 0.3s, color 0.3s' },
+    patientGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' },
     patientCard: {
       backgroundColor: 'white',
       padding: '20px',
       borderRadius: '12px',
       boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1)',
-      cursor: 'pointer',
       transition: 'transform 0.1s, box-shadow 0.1s',
-      '&:hover': {
-        transform: 'translateY(-2px)',
-        boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1)',
-      },
-    },
-    cardHeader: {
       display: 'flex',
-      alignItems: 'center',
-      marginBottom: '10px',
+      flexDirection: 'column',
     },
-    patientAvatar: {
-      width: '40px',
-      height: '40px',
-      borderRadius: '50%',
-      backgroundColor: '#F3F4F6',
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginRight: '15px',
+    cardHeader: { display: 'flex', alignItems: 'center', marginBottom: '10px' },
+    patientAvatar: { width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#F3F4F6', display: 'flex', justifyContent: 'center', alignItems: 'center', marginRight: '15px' },
+    patientName: { fontSize: '1.1rem', fontWeight: '600', margin: 0, color: '#1F2937' },
+    patientDetails: { fontSize: '0.9rem', color: '#6B7280', margin: 0 },
+    cardBody: { flexGrow: 1 },
+    cardActions: { 
+        display: 'flex', 
+        gap: '10px', 
+        marginTop: '15px', 
+        borderTop: '1px solid #F3F4F6', 
+        paddingTop: '15px' 
     },
-    patientName: {
-      fontSize: '1.1rem',
-      fontWeight: '600',
-      margin: 0,
-      color: '#1F2937',
+    actionButton: { 
+        flex: 1, 
+        padding: '10px 12px', 
+        border: 'none', 
+        borderRadius: '8px', 
+        cursor: 'pointer', 
+        fontWeight: '600', 
+        fontSize: '0.9rem', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        gap: '8px', 
+        transition: 'background-color 0.2s' 
     },
-    patientDetails: {
-      fontSize: '0.9rem',
-      color: '#6B7280',
-      margin: 0,
+    profileButton: { 
+        backgroundColor: '#F3F4F6', 
+        color: '#374151' 
     },
-    // Removidos estilos de actionButton e agendaButton
+    playlistButton: { 
+        backgroundColor: '#EDE9FE', 
+        color: '#6D28D9' 
+    },
   };
 
   return (
@@ -247,20 +223,41 @@ const TherapistDashboardPage = ({ user }) => {
               <div 
                 key={patient.id} 
                 style={styles.patientCard}
-                onClick={() => setViewingPatient(patient)}
               >
-                <div style={styles.cardHeader}>
-                  <div style={styles.patientAvatar}>
-                    <UserIcon style={{ color: '#6D28D9' }} />
+                <div style={styles.cardBody}>
+                  <div style={styles.cardHeader}>
+                    <div style={styles.patientAvatar}>
+                      <UserIcon style={{ color: '#6D28D9' }} />
+                    </div>
+                    <div>
+                      <h3 style={styles.patientName}>{patient.displayName || 'Paciente sem nome'}</h3>
+                      <p style={styles.patientDetails}>
+                        {patient.age ? `Idade: ${patient.age}` : '—'}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 style={styles.patientName}>{patient.displayName || 'Paciente sem nome'}</h3>
-                    <p style={styles.patientDetails}>
-                      {patient.age ? `Idade: ${patient.age}` : '—'}
-                    </p>
-                  </div>
+                  {renderActivity(patient.id)}
                 </div>
-                {renderActivity(patient.id)}
+
+                <div style={styles.cardActions}>
+                    <button 
+                        style={{...styles.actionButton, ...styles.profileButton}}
+                        onClick={() => setViewingPatient(patient)}
+                    >
+                        <UserIcon style={{ width: 16, height: 16 }} />
+                        Ver Perfil
+                    </button>
+                    {/* ATUALIZAÇÃO: Este botão agora leva para /playlists */}
+                    <button 
+                        style={{...styles.actionButton, ...styles.playlistButton}}
+                        onClick={() => {
+                            navigate(`/playlists`); // Removido o '?assignPatientId'
+                        }}
+                    >
+                        <MusicIcon style={{ width: 16, height: 16 }} />
+                        Playlists
+                    </button>
+                </div>
               </div>
             ))
           ) : (
@@ -274,13 +271,13 @@ const TherapistDashboardPage = ({ user }) => {
         </div>
       )}
 
+      {/* O modal agora usa o 'patient' original que você me passou */}
       {viewingPatient && (
         <PatientDetailModal
-          isOpen={!!viewingPatient}
-          onClose={() => setViewingPatient(null)}
           patient={viewingPatient}
-          therapistId={therapistUid}
+          onClose={() => setViewingPatient(null)}
           setNotification={setNotification}
+          // Removidas props 'isOpen' e 'therapistId' que não existiam no original
         />
       )}
     </div>

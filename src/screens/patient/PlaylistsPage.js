@@ -1,3 +1,4 @@
+// src/screens/patient/PlaylistsPage.js
 import React, { useState, useEffect } from 'react';
 
 // Importa as ferramentas do Firebase que esta página precisa
