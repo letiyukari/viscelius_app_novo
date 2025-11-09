@@ -1,6 +1,5 @@
 // src/screens/therapist/PatientPlaylistsPage.js
-// CORREÇÃO: Removido 'useCallback' que não estava sendo usado
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db } from '../../firebase';
 import { collection, onSnapshot, query, where, deleteDoc, doc, getDoc } from 'firebase/firestore';

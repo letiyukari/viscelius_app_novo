@@ -18,7 +18,7 @@ import SessionPage from './screens/therapist/SessionPage';
 import AgendaConfigPage from './screens/therapist/AgendaConfigPage';
 
 // ADICIONADO: Import da nova página
-import PatientPlaylistsManagement from './screens/therapist/PatientPlaylistsManagement'; 
+import PatientPlaylistsPage from './screens/therapist/PatientPlaylistsPage'; 
 
 import RequireRole from './routes/RequireRole';
 import { useAuth } from './context/AuthContext';
@@ -93,13 +93,13 @@ function App() {
                   }
                 />
 
-                {/* ADICIONADO: Nova rota para gerenciamento de playlists do paciente */}
+                {/* ADICIONADO: Nova rota para playlists exclusivas do paciente */}
                 <Route
                   path="/therapist/patient/:patientId/playlists"
                   element={
                     <RequireRole userRole={userRole} requiredRole="therapist" redirectTo="/inicio">
                       <MainLayout userRole={userRole} onLogout={logout}>
-                        <PatientPlaylistsManagement />
+                        <PatientPlaylistsPage />
                       </MainLayout>
                     </RequireRole>
                   }
@@ -146,6 +146,7 @@ function App() {
                     userRole === 'therapist' ? (
                       <RequireRole userRole={userRole} requiredRole="therapist" redirectTo="/inicio">
                         <MainLayout userRole={userRole} onLogout={logout}>
+                          {/* Esta rota /playlists agora é a sua biblioteca "pessoal", se você quiser manter uma */}
                           <TherapistPlaylistsPage user={user} />
                         </MainLayout>
                       </RequireRole>

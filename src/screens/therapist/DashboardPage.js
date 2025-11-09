@@ -42,7 +42,8 @@ const TherapistDashboardPage = ({ user }) => {
     return { nextAppointment: null, lastConsultation: null };
   }, []);
 
-  // Efeito para carregar pacientes
+  // ... (useEffect de carregar pacientes, atividades e filtros permanecem os mesmos) ...
+    // Efeito para carregar pacientes
   useEffect(() => {
     if (!therapistUid) {
       setLoading(false);
@@ -52,6 +53,7 @@ const TherapistDashboardPage = ({ user }) => {
     setLoading(true);
     let q;
     
+    // Query condicional para filtrar por modo
     if (filterMode === FILTER_MODES.MY_PATIENTS) {
       q = query(
         collection(db, 'users'),
@@ -82,7 +84,7 @@ const TherapistDashboardPage = ({ user }) => {
     return () => unsubscribe();
   }, [therapistUid, filterMode]);
 
-  // Efeito para carregar atividades
+  // Efeito para carregar atividades (mantido, mas simplificado na fetchActivity)
   useEffect(() => {
     if (patients.length > 0) {
       patients.forEach(patient => {
@@ -104,7 +106,7 @@ const TherapistDashboardPage = ({ user }) => {
     );
     setFilteredPatients(filtered);
   }, [searchTerm, patients]);
-
+  
   const handleToggleFilter = () => {
     setFilterMode(prev => 
       prev === FILTER_MODES.MY_PATIENTS 
@@ -130,7 +132,7 @@ const TherapistDashboardPage = ({ user }) => {
     );
   };
 
-  // Estilos (mantidos com os botões)
+  // Estilos
   const styles = {
     pageContainer: { padding: '2rem 3.5rem', backgroundColor: '#F9FAFB', fontFamily: '"Inter", sans-serif', minHeight: '100vh' },
     header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' },
@@ -247,11 +249,11 @@ const TherapistDashboardPage = ({ user }) => {
                         <UserIcon style={{ width: 16, height: 16 }} />
                         Ver Perfil
                     </button>
-                    {/* ATUALIZAÇÃO: Este botão agora leva para /playlists */}
+                    {/* ATUALIZADO: Este botão leva para a nova rota */}
                     <button 
                         style={{...styles.actionButton, ...styles.playlistButton}}
                         onClick={() => {
-                            navigate(`/playlists`); // Removido o '?assignPatientId'
+                            navigate(`/therapist/patient/${patient.id}/playlists`);
                         }}
                     >
                         <MusicIcon style={{ width: 16, height: 16 }} />
@@ -271,13 +273,11 @@ const TherapistDashboardPage = ({ user }) => {
         </div>
       )}
 
-      {/* O modal agora usa o 'patient' original que você me passou */}
       {viewingPatient && (
         <PatientDetailModal
           patient={viewingPatient}
           onClose={() => setViewingPatient(null)}
           setNotification={setNotification}
-          // Removidas props 'isOpen' e 'therapistId' que não existiam no original
         />
       )}
     </div>
