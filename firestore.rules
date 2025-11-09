@@ -3,66 +3,63 @@ service cloud.firestore {
   match /databases/{database}/documents {
     function isAuthenticated() {
       return request.auth != null;
-    }
+}
 
     function isTherapistOwner(therapistId) {
       return isAuthenticated() && request.auth.uid == therapistId;
-    }
+}
 
     function isSlotRequester() {
       return isAuthenticated() && (
         request.auth.uid == resource.data.requestedBy ||
         request.auth.uid == request.resource.data.requestedBy
       );
-    }
+}
 
     match /therapists/{therapistId} {
       allow read: if isAuthenticated();
       allow write: if isTherapistOwner(therapistId);
-    }
+}
 
     match /therapists/{therapistId}/slots/{slotId} {
       allow read: if isAuthenticated();
-
-      allow create: if isTherapistOwner(therapistId)
+allow create: if isTherapistOwner(therapistId)
         && request.resource.data.therapistId == therapistId;
-
-      allow update: if (
+allow update: if (
           isTherapistOwner(therapistId) ||
           (isSlotRequester() && request.resource.data.therapistId == therapistId)
         );
-
-      allow delete: if isTherapistOwner(therapistId);
+allow delete: if isTherapistOwner(therapistId);
     }
 
     match /{path=**}/slots/{slotId} {
       allow read: if isAuthenticated();
-    }
+}
 
     function isAppointmentParticipant() {
       return isAuthenticated() && (
         request.auth.uid == resource.data.patientId ||
         request.auth.uid == resource.data.therapistId
       );
-    }
+}
 
     function isAppointmentParticipantFromRequest() {
       return isAuthenticated() && (
         request.auth.uid == request.resource.data.patientId ||
         request.auth.uid == request.resource.data.therapistId
       );
-    }
+}
 
     function isAppointmentTherapist() {
       return isAuthenticated() && (
         request.auth.uid == resource.data.therapistId ||
         (resource.data.therapistId == null && request.resource.data.therapistId == request.auth.uid)
       );
-    }
+}
 
     function isAppointmentPatient() {
       return isAuthenticated() && request.auth.uid == resource.data.patientId;
-    }
+}
 
     function appointmentMeetingFieldsUnchanged() {
       return request.resource.data.meetingProvider == resource.data.meetingProvider
@@ -70,7 +67,7 @@ service cloud.firestore {
         && request.resource.data.meetingUrl == resource.data.meetingUrl
         && request.resource.data.meetingConfig == resource.data.meetingConfig
         && request.resource.data.meetingExpiresAt == resource.data.meetingExpiresAt;
-    }
+}
 
     function appointmentMeetingFieldsCleared() {
       return request.resource.data.meetingProvider == null
@@ -78,42 +75,42 @@ service cloud.firestore {
         && request.resource.data.meetingUrl == null
         && request.resource.data.meetingConfig == null
         && request.resource.data.meetingExpiresAt == null;
-    }
+}
 
     function appointmentHistoryFieldsUnchanged() {
       return request.resource.data.historyId == resource.data.historyId
         && request.resource.data.completedAt == resource.data.completedAt;
-    }
+}
 
     function appointmentStatusUnchanged() {
       return request.resource.data.status == resource.data.status
         && request.resource.data.sessionStatus == resource.data.sessionStatus;
-    }
+}
 
     function appointmentPatientCancelling() {
       return request.resource.data.status == 'canceled'
         && request.resource.data.sessionStatus == 'canceled';
-    }
+}
 
     function isConsultationParticipant() {
       return isAuthenticated() && (
         request.auth.uid == resource.data.patientId ||
         request.auth.uid == resource.data.therapistId
       );
-    }
+}
 
     function isConsultationTherapist() {
       return isAuthenticated() && request.auth.uid == resource.data.therapistId;
-    }
+}
 
     function isConsultationTherapistFromRequest() {
       return isAuthenticated() && request.auth.uid == request.resource.data.therapistId;
-    }
+}
 
     match /appointments/{appointmentId} {
       allow read: if isAppointmentParticipant();
       allow create: if isAppointmentParticipantFromRequest();
-      allow update: if isAppointmentParticipant() && (
+allow update: if isAppointmentParticipant() && (
         isAppointmentTherapist() ||
         (
           isAppointmentPatient() &&
@@ -122,69 +119,65 @@ service cloud.firestore {
           (appointmentMeetingFieldsUnchanged() || appointmentMeetingFieldsCleared())
         )
       );
-      allow delete: if isAppointmentParticipant();
+allow delete: if isAppointmentParticipant();
     }
 
     match /consultations/{consultationId} {
       allow read: if isConsultationParticipant();
-      allow create: if isConsultationTherapistFromRequest();
+allow create: if isConsultationTherapistFromRequest();
       allow update: if isConsultationTherapist();
       allow delete: if isConsultationTherapist();
-    }
+}
 
     // Regras para playlists
     match /playlists/{playlistId} {
-      // Helper: verifica se o usuário autenticado tem role 'therapist' no documento users/{uid}
       function isTherapistUser() {
         return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'therapist';
-      }
+}
 
-  // Leitura: permitido para qualquer usuário autenticado (pacientes e terapeutas)
-  allow read: if isAuthenticated();
+      // --- REGRA DE LEITURA ATUALIZADA ---
+      // Apenas o terapeuta dono OU o paciente vinculado podem ler.
+      allow read: if isAuthenticated() && 
+                   (resource.data.therapistUid == request.auth.uid || 
+                    resource.data.patientUid == request.auth.uid);
 
-      // Helper para checar se o patientId pertence ao terapeuta que está criando
       function patientBelongsToTherapist(patientId) {
         return patientId != null
           && get(/databases/$(database)/documents/users/$(patientId)).data.role == 'patient'
           && get(/databases/$(database)/documents/users/$(patientId)).data.therapistUid == request.auth.uid;
-      }
+}
 
-      // Criação: o usuário autenticado que informar therapistUid igual ao seu uid pode criar a playlist.
-      // Não exigimos mais que o patientUid esteja registrado como pertencente ao terapeuta.
-      // (Removemos a checagem patientBelongsToTherapist para evitar bloqueios quando o vínculo não
-      // estiver presente no documento do paciente.)
-      // Allow creation when patientUid is a string OR when it's null/omitted (so therapist
-      // can create playlists without linking a patient). This prevents 'missing or insufficient'
-      // permission errors when the client sends patientUid: null.
-      allow create: if isAuthenticated()
+      // --- REGRA DE CRIAÇÃO ATUALIZADA ---
+      // Exige que o therapistUid seja o do usuário
+      // Exige que o patientUid seja um texto (string)
+allow create: if isAuthenticated()
         && request.resource.data.therapistUid == request.auth.uid
-        && (
-          request.resource.data.patientUid is string ||
-          request.resource.data.patientUid == null ||
-          !("patientUid" in request.resource.data)
-        );
+        && (request.resource.data.patientUid is string); // Agora é obrigatório
 
-      // Atualizar / deletar: apenas o terapeuta dono da playlist (verifica apenas therapistUid)
+      // Atualizar / deletar: apenas o terapeuta dono
       allow update, delete: if isAuthenticated() && resource.data.therapistUid == request.auth.uid;
-      
-      // Regras para o conteúdo dentro das playlists (músicas e vídeos)
-      match /content/{contentId} {
-        // Qualquer usuário autenticado pode ler o conteúdo (pode ajustar conforme necessário)
-        allow read: if isAuthenticated();
 
-        // Escrita: apenas o terapeuta dono da playlist (checa therapistUid no documento de playlist)
+      // Regras para o conteúdo dentro das playlists
+      match /content/{contentId} {
+        // Apenas o terapeuta dono OU o paciente vinculado podem ler.
+        allow read: if isAuthenticated() &&
+                     (get(/databases/$(database)/documents/playlists/$(playlistId)).data.therapistUid == request.auth.uid ||
+                      get(/databases/$(database)/documents/playlists/$(playlistId)).data.patientUid == request.auth.uid);
+
+        // Escrita: apenas o terapeuta dono da playlist
         allow write: if isAuthenticated()
           && get(/databases/$(database)/documents/playlists/$(playlistId)).data.therapistUid == request.auth.uid;
-      }
+}
     }
 
     match /users/{userId} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && request.auth.uid == userId;
+      // REGRA ORIGINAL: Apenas o próprio usuário pode escrever.
+allow write: if isAuthenticated() && request.auth.uid == userId;
     }
 
     match /{document=**} {
       allow read, write: if false;
-    }
+}
   }
 }

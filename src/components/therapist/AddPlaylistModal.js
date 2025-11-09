@@ -2,26 +2,30 @@
 import React, { useState } from 'react';
 import { db } from '../../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import AvatarUploader from '../profile/AvatarUploader'; 
+import AvatarUploader from '../profile/AvatarUploader'; // Importa o uploader de avatar
 
 // Constantes do Cloudinary
 const CLOUDINARY_CLOUD_NAME = "de0avsta1"; 
 const CLOUDINARY_UPLOAD_PRESET = "viscelius_app_uploads";
 
-// ADICIONADO: Nova prop 'onPlaylistCreated'
-const AddPlaylistModal = ({ isOpen, onClose, therapistId, setNotification, onPlaylistCreated }) => {
-    // ... (Estados permanecem os mesmos)
+// ATUALIZADO: Adicionada a prop 'patientId'
+const AddPlaylistModal = ({ isOpen, onClose, therapistId, setNotification, patientId }) => {
+    // Estados da Playlist
     const [name, setName] = useState('');
     const [desc, setDesc] = useState('');
     const [imageFile, setImageFile] = useState(null);
     const [imagePreviewUrl, setImagePreviewUrl] = useState(''); 
-    const [contentType, setContentType] = useState('videoLink');
+    
+    // Estados do Conteúdo
+    const [contentType, setContentType] = useState('videoLink'); // 'videoLink', 'audioFile'
     const [contentName, setContentName] = useState('');
     const [contentArtist, setContentArtist] = useState('');
-    const [contentVideoUrl, setContentVideoUrl] = useState('');
-    const [contentMp3File, setContentMp3File] = useState(null);
+    const [contentVideoUrl, setContentVideoUrl] = useState(''); // Para link do YouTube
+    const [contentMp3File, setContentMp3File] = useState(null); // Para ficheiro MP3
+
+    // Estado de Loading
     const [isUploading, setIsUploading] = useState(false);
-    const [uploadProgress, setUploadProgress] = useState('');
+    const [uploadProgress, setUploadProgress] = useState(''); // Mensagem de feedback
 
     // --- LÓGICA DE UPLOAD (sem alterações) ---
     const uploadToCloudinary = async (file, resourceType = 'image') => {
@@ -41,8 +45,10 @@ const AddPlaylistModal = ({ isOpen, onClose, therapistId, setNotification, onPla
         }
     };
 
-    // --- LÓGICA DE VALIDAÇÃO E SALVAMENTO (sem alterações) ---
+    // --- LÓGICA DE VALIDAÇÃO E SALVAMENTO ---
     const validateData = () => {
+        // ATUALIZAÇÃO: Verifica se o patientId (que vem como prop) existe
+        if (!patientId) return 'Erro: ID do paciente não foi encontrado.';
         if (!name?.trim()) return 'Nome da playlist é obrigatório';
         if (!desc?.trim()) return 'Descrição é obrigatória';
         if (!imageFile) return 'Uma imagem de capa é obrigatória';
@@ -66,7 +72,7 @@ const AddPlaylistModal = ({ isOpen, onClose, therapistId, setNotification, onPla
             setUploadProgress('A carregar imagem de capa...');
             const imageUrl = await uploadToCloudinary(imageFile, 'image');
 
-            // 2. Upload do Conteúdo
+            // 2. Upload do Conteúdo (se for ficheiro MP3)
             let contentUrl = '';
             let contentTypeFirebase = 'video'; 
 
@@ -86,12 +92,12 @@ const AddPlaylistModal = ({ isOpen, onClose, therapistId, setNotification, onPla
                 desc: desc.trim(),
                 image: imageUrl,
                 therapistUid: therapistId,
-                patientUid: null,
+                patientUid: patientId, // ATUALIZAÇÃO: Vincula a playlist ao paciente!
                 createdAt: serverTimestamp()
             };
             const playlistDocRef = await addDoc(collection(db, "playlists"), playlistData);
             
-            // 4. Adicionar o Conteúdo na subcoleção
+            // 4. Adicionar o Conteúdo na subcoleção da Playlist
             setUploadProgress('A salvar conteúdo...');
             const contentData = {
                 name: contentName.trim(),
@@ -101,13 +107,6 @@ const AddPlaylistModal = ({ isOpen, onClose, therapistId, setNotification, onPla
                 createdAt: serverTimestamp()
             };
             await addDoc(collection(db, 'playlists', playlistDocRef.id, 'content'), contentData);
-
-            // --- ATUALIZAÇÃO (IDEIA 3) ---
-            // 5. Chamar o callback (se existir) com o ID da nova playlist
-            if (onPlaylistCreated) {
-                onPlaylistCreated(playlistDocRef.id);
-            }
-            // -----------------------------
 
             setNotification({ message: 'Playlist criada com sucesso!', type: 'success' });
             handleClose(); // Limpa e fecha o modal
@@ -169,7 +168,6 @@ const AddPlaylistModal = ({ isOpen, onClose, therapistId, setNotification, onPla
         uploadProgressText: { textAlign: 'center', color: '#8B5CF6', fontWeight: '600', height: '20px' }
     };
 
-    // Render (sem alterações)
     return (
         <div style={styles.overlay}>
             <div style={styles.modal} onClick={(e) => e.stopPropagation()}>

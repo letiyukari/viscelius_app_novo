@@ -1,29 +1,14 @@
 // src/components/therapist/PatientDetailModal.js
 
 import React from 'react';
-// REMOVIDO: Ferramentas do Firebase que não são mais necessárias aqui
-import { db } from '../../firebase';
-// import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-
-// REMOVIDO: O 'Icons' não estava a ser usado 
-// import Icons from '../common/Icons'; 
-
-// REMOVIDO: Constantes do Cloudinary não são mais necessárias aqui
-// const CLOUDINARY_CLOUD_NAME = "de0avsta1"; 
-// const CLOUDINARY_UPLOAD_PRESET = "viscelius_app_uploads";
+// CORREÇÃO: Removido 'db' que não estava sendo usado
+// import { db } from '../../firebase'; 
 
 const PatientDetailModal = ({ patient, onClose, setNotification }) => {
-    // REMOVIDO: Estados de upload de material
-    // const [mp3File, setMp3File] = useState(null);
-    // const [link, setLink] = useState('');
-    // const [isUploading, setIsUploading] = useState(false);
 
     if (!patient) {
         return null;
     }
-    
-    // REMOVIDO: Função handleMaterialSubmit
-    // const handleMaterialSubmit = async (event) => { ... };
 
     const styles = {
         overlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
@@ -37,14 +22,7 @@ const PatientDetailModal = ({ patient, onClose, setNotification }) => {
         value: { fontSize: '16px', color: '#1F2937', padding: '12px', backgroundColor: '#F9FAFB', borderRadius: '8px' },
         goalsValue: { fontSize: '16px', color: '#1F2937', padding: '12px', backgroundColor: '#F9FAFB', borderRadius: '8px', whiteSpace: 'pre-wrap', lineHeight: '1.6' },
         footer: { display: 'flex', justifyContent: 'flex-end', marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid #E5E7EB' },
-        // REVERTIDO: Estilo do botão
         button: { padding: '12px 24px', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: '600', cursor: 'pointer', backgroundColor: '#8B5CF6', color: 'white' },
-        
-        // REMOVIDO: Estilos da secção de material
-        // materialSection: { ... },
-        // materialTitle: { ... },
-        // inputField: { ... },
-        // submitButton: { ... },
     };
 
     return (
@@ -63,11 +41,7 @@ const PatientDetailModal = ({ patient, onClose, setNotification }) => {
                         <label style={styles.label}>Objetivos Terapêuticos</label>
                         <div style={styles.goalsValue}>{patient.therapeuticGoals}</div>
                     </div>
-
-                    {/* REMOVIDO: A secção inteira de "Enviar Materiais" foi retirada daqui */}
-                    
                 </div>
-                {/* REVERTIDO: Rodapé original com um botão */}
                 <div style={styles.footer}>
                     <button style={styles.button} onClick={onClose}>Fechar</button>
                 </div>

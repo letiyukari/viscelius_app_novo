@@ -3,19 +3,22 @@ import React, { useState, useEffect } from 'react';
 
 // Importa as ferramentas do Firebase que esta página precisa
 import { db } from '../../firebase';
-import { collection, onSnapshot, query } from 'firebase/firestore';
+// CORREÇÃO: Removido o "G" sobrando no final da linha
+import { collection, onSnapshot, query, where } from 'firebase/firestore'; // Adicionado 'where'
 
 // Importa os ícones que esta página precisa
-// CORREÇÃO: Removido 'XIcon' que não estava a ser usado.
 import { PlayIcon, PauseIcon } from '../../common/Icons'; 
 import { usePlayer, sanitizeTrack } from '../../context/PlayerContext';
 import PatientPlaylistContentModal from '../../components/patient/PlaylistContentModal';
-
+import { useAuth } from '../../context/AuthContext'; // ADICIONADO: para pegar o usuário logado
 
 // --- PÁGINA DE PLAYLISTS (VERSÃO PACIENTE) ---
-const PlaylistsPage = () => {
+const PlaylistsPage = () => { // Removido 'user' das props, usaremos o do AuthContext
     const { currentTrack, isPlaying, playTrack, togglePlayPause } = usePlayer();
+    const { user } = useAuth(); // ADICIONADO: Pega o usuário (paciente) logado
+    
     const [firestorePlaylists, setFirestorePlaylists] = useState([]);
+    const [loading, setLoading] = useState(true); // ADICIONADO: Estado de loading
     const [message, setMessage] = useState({ type: '', text: '' });
     const [showSongsModal, setShowSongsModal] = useState(false);
     const [selectedPlaylist, setSelectedPlaylist] = useState(null);
@@ -31,27 +34,40 @@ const PlaylistsPage = () => {
         { id: 'static-5', name: "Floresta Amazônica", desc: "Conecte-se com a natureza.", image: "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?q=80&w=2071&auto=format&fit=crop", url: "/audio/relaxamento-profundo.mp3" },
         { id: 'static-6', name: "Pássaros da Manhã", desc: "Desperte com sons suaves.", image: "https://images.unsplash.com/photo-1473448912268-2022ce9509d8?q=80&w=1925&auto=format&fit=crop", url: "/audio/relaxamento-profundo.mp3" },
     ];
-    // ... (outras playlists estáticas se houver)
 
     // Efeito que busca as playlists do Firestore
     useEffect(() => {
-        // NOTA: Esta query ainda está a buscar TODAS as playlists.
-        // Você vai querer reintroduzir o filtro por therapistId que fizemos antes,
-        // mas por agora, vamos focar-nos em fazer a app compilar.
-        const q = query(collection(db, 'playlists'));
+        // Não busca nada se o paciente não estiver logado
+        if (!user || !user.uid) {
+            setLoading(false);
+            return;
+        }
+
+        setLoading(true);
+        
+        // ATUALIZADO: A query agora filtra playlists onde 'patientUid'
+        // é igual ao 'uid' do paciente logado.
+        const q = query(
+            collection(db, 'playlists'), 
+            where("patientUid", "==", user.uid)
+        );
+        
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const fetchedPlaylists = [];
             querySnapshot.forEach((doc) => {
                 fetchedPlaylists.push({ id: doc.id, ...doc.data() });
             });
             setFirestorePlaylists(fetchedPlaylists);
+            setLoading(false);
         }, (error) => {
             console.error("Erro ao carregar playlists do Firestore:", error);
             setMessage({ type: 'error', text: 'Erro ao carregar playlists.' });
+            setLoading(false);
         });
         return () => unsubscribe();
-    }, []);
+    }, [user]); // Depende do usuário logado
 
+    // ... (buildQueue, handleTrackAction, open/closeSongsModal permanecem os mesmos) ...
     const buildQueue = (tracks = [], fallbackImage) =>
         tracks
             .map((item) => sanitizeTrack({ ...item, image: item.image || fallbackImage }))
@@ -78,7 +94,6 @@ const PlaylistsPage = () => {
         setMessage({ type: '', text: '' });
     };
 
-    // Funções para controlar o novo modal de músicas
     const openSongsModal = (playlist) => {
         setSelectedPlaylist(playlist);
         setShowSongsModal(true);
@@ -89,7 +104,7 @@ const PlaylistsPage = () => {
         setSelectedPlaylist(null);
     };
     
-    // Componente de Card para cada playlist
+    // Componente de Card (sem alterações)
     const PlaylistCard = ({ item, onPlay, isPlayingNow, isDynamic = false, onViewSongs }) => {
         const [isHovered, setIsHovered] = useState(false);
         const styles = {
@@ -100,8 +115,6 @@ const PlaylistsPage = () => {
             playButton: { position: 'absolute', bottom: '75px', right: '20px', backgroundColor: '#8B5CF6', color: '#fff', border: 'none', borderRadius: '50%', width: '50px', height: '50px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 15px rgba(0,0,0,0.3)', transition: 'transform 0.2s, opacity 0.2s', opacity: (isHovered || isPlayingNow) ? 1 : 0, transform: (isHovered || isPlayingNow) ? 'translateY(0)' : 'translateY(10px)' },
         };
 
-        // Se a playlist for dinâmica (do Firestore), clicar no card abre a lista de músicas.
-        // Se for estática, não faz nada ao clicar no card (só no botão de play).
         const cardClickHandler = isDynamic ? () => onViewSongs(item) : undefined;
 
         return (
@@ -110,7 +123,6 @@ const PlaylistsPage = () => {
                 <h4 style={styles.cardTitle}>{item.name}</h4>
                 <p style={styles.cardDesc}>{item.desc}</p>
 
-                {/* O botão de play só aparece para playlists estáticas que têm uma URL direta */}
                 {!isDynamic && (
                     <button
                         style={styles.playButton}
@@ -127,28 +139,38 @@ const PlaylistsPage = () => {
     };
 
     // Componente que renderiza uma seção de playlists
-    const PlaylistSection = ({ title, data, onPlay, currentTrackId, isPlayingGlobal, isDynamic = false, onViewSongs }) => (
+    // ATUALIZADO: Adiciona verificação de loading e de lista vazia
+    const PlaylistSection = ({ title, data, onPlay, currentTrackId, isPlayingGlobal, isDynamic = false, onViewSongs, isLoading = false }) => (
         <section style={{ marginBottom: '2rem' }}>
             <h2 style={{ color: '#fff', fontSize: '1.5rem', fontWeight: '700', marginBottom: '1.5rem' }}>{title}</h2>
-            <div style={{ display: 'flex', gap: '1.5rem', overflowX: 'auto', paddingBottom: '1rem' }}>
-                {data.map(item => {
-                    const normalized = sanitizeTrack({ ...item, image: item.image });
-                    const isPlayingNow = !!normalized && normalized.id === currentTrackId && isPlayingGlobal;
-                    return (
-                        <PlaylistCard
-                            key={item.id}
-                            item={item}
-                            onPlay={(track) => onPlay(track, data, item.image)}
-                            isPlayingNow={isPlayingNow}
-                            isDynamic={isDynamic}
-                            onViewSongs={onViewSongs}
-                        />
-                    );
-                })}
-            </div>
+            {isLoading ? (
+                <p style={{color: '#b3b3b3'}}>Carregando playlists...</p>
+            ) : data.length === 0 ? (
+                <p style={{color: '#b3b3b3'}}>
+                    {isDynamic ? 'Seu terapeuta ainda não criou nenhuma playlist para você.' : 'Nenhuma playlist encontrada.'}
+                </p>
+            ) : (
+                <div style={{ display: 'flex', gap: '1.5rem', overflowX: 'auto', paddingBottom: '1rem' }}>
+                    {data.map(item => {
+                        const normalized = sanitizeTrack({ ...item, image: item.image });
+                        const isPlayingNow = !!normalized && normalized.id === currentTrackId && isPlayingGlobal;
+                        return (
+                            <PlaylistCard
+                                key={item.id}
+                                item={item}
+                                onPlay={(track) => onPlay(track, data, item.image)}
+                                isPlayingNow={isPlayingNow}
+                                isDynamic={isDynamic}
+                                onViewSongs={onViewSongs}
+                            />
+                        );
+                    })}
+                </div>
+            )}
         </section>
     );
 
+    // Estilos (sem alterações)
     const styles = {
         pageContainer: { padding: '0 2rem', backgroundColor: '#121212', color: '#fff', fontFamily: '"Inter", sans-serif', overflowY: 'auto', height: '100vh', paddingBottom: '100px' },
         heroSection: { 
@@ -196,6 +218,7 @@ const PlaylistsPage = () => {
                 </div>
             )}
 
+            {/* ATUALIZADO: Passa o estado de loading */}
             <PlaylistSection
                 title="Playlists do seu Terapeuta"
                 data={firestorePlaylists}
@@ -204,6 +227,7 @@ const PlaylistsPage = () => {
                 isPlayingGlobal={isPlaying}
                 isDynamic={true}
                 onViewSongs={openSongsModal}
+                isLoading={loading}
             />
 
             <PlaylistSection
