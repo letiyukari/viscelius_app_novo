@@ -17,6 +17,9 @@ import TherapistPlaylistsPage from './screens/therapist/PlaylistsPage';
 import SessionPage from './screens/therapist/SessionPage';
 import AgendaConfigPage from './screens/therapist/AgendaConfigPage';
 
+// ADICIONADO: Import da nova página
+import PatientPlaylistsManagement from './screens/therapist/PatientPlaylistsManagement'; 
+
 import RequireRole from './routes/RequireRole';
 import { useAuth } from './context/AuthContext';
 import { PlayerProvider } from './context/PlayerContext';
@@ -89,6 +92,20 @@ function App() {
                     </RequireRole>
                   }
                 />
+
+                {/* ADICIONADO: Nova rota para gerenciamento de playlists do paciente */}
+                <Route
+                  path="/therapist/patient/:patientId/playlists"
+                  element={
+                    <RequireRole userRole={userRole} requiredRole="therapist" redirectTo="/inicio">
+                      <MainLayout userRole={userRole} onLogout={logout}>
+                        <PatientPlaylistsManagement />
+                      </MainLayout>
+                    </RequireRole>
+                  }
+                />
+                
+                {/* ... (Rotas do Paciente) ... */}
 
                 <Route
                   path="/inicio"

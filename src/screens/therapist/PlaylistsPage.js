@@ -298,6 +298,7 @@ const TherapistPlaylistsPage = ({ user }) => {
                 onClose={() => setIsAddPlaylistModalOpen(false)}
                 therapistId={user?.uid}
                 setNotification={setNotification}
+                // REMOVIDO: 'onPlaylistCreated'
             />
             
             {/* REMOVIDO: O EditPlaylistModal já não é chamado aqui */}

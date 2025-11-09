@@ -1,46 +1,38 @@
+// src/components/therapist/AddPlaylistModal.js
 import React, { useState } from 'react';
 import { db } from '../../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import AvatarUploader from '../profile/AvatarUploader'; // Importa o uploader de avatar
+import AvatarUploader from '../profile/AvatarUploader'; 
 
 // Constantes do Cloudinary
 const CLOUDINARY_CLOUD_NAME = "de0avsta1"; 
 const CLOUDINARY_UPLOAD_PRESET = "viscelius_app_uploads";
 
-const AddPlaylistModal = ({ isOpen, onClose, therapistId, setNotification }) => {
-    // Estados da Playlist
+// ADICIONADO: Nova prop 'onPlaylistCreated'
+const AddPlaylistModal = ({ isOpen, onClose, therapistId, setNotification, onPlaylistCreated }) => {
+    // ... (Estados permanecem os mesmos)
     const [name, setName] = useState('');
     const [desc, setDesc] = useState('');
     const [imageFile, setImageFile] = useState(null);
     const [imagePreviewUrl, setImagePreviewUrl] = useState(''); 
-    
-    // Estados do Conteúdo
-    const [contentType, setContentType] = useState('videoLink'); // 'videoLink', 'audioFile'
+    const [contentType, setContentType] = useState('videoLink');
     const [contentName, setContentName] = useState('');
     const [contentArtist, setContentArtist] = useState('');
-    const [contentVideoUrl, setContentVideoUrl] = useState(''); // Para link do YouTube
-    const [contentMp3File, setContentMp3File] = useState(null); // Para ficheiro MP3
-
-    // Estado de Loading
+    const [contentVideoUrl, setContentVideoUrl] = useState('');
+    const [contentMp3File, setContentMp3File] = useState(null);
     const [isUploading, setIsUploading] = useState(false);
-    const [uploadProgress, setUploadProgress] = useState(''); // Mensagem de feedback
+    const [uploadProgress, setUploadProgress] = useState('');
 
-    // --- LÓGICA DE UPLOAD ---
-
-    // Função genérica de upload para o Cloudinary
+    // --- LÓGICA DE UPLOAD (sem alterações) ---
     const uploadToCloudinary = async (file, resourceType = 'image') => {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-
-        // O endpoint é diferente para imagens vs. áudio/vídeo
         const endpoint = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`;
-
         const response = await fetch(endpoint, {
             method: 'POST',
             body: formData,
         });
-
         const data = await response.json();
         if (data.secure_url) {
             return data.secure_url;
@@ -49,19 +41,15 @@ const AddPlaylistModal = ({ isOpen, onClose, therapistId, setNotification }) => 
         }
     };
 
-    // --- LÓGICA DE VALIDAÇÃO E SALVAMENTO ---
-
+    // --- LÓGICA DE VALIDAÇÃO E SALVAMENTO (sem alterações) ---
     const validateData = () => {
         if (!name?.trim()) return 'Nome da playlist é obrigatório';
         if (!desc?.trim()) return 'Descrição é obrigatória';
         if (!imageFile) return 'Uma imagem de capa é obrigatória';
-        
-        // Validação do conteúdo
         if (!contentName?.trim()) return 'Nome do conteúdo é obrigatório';
         if (contentType === 'videoLink' && !contentVideoUrl?.trim()) return 'URL do vídeo é obrigatório';
         if (contentType === 'audioFile' && !contentMp3File) return 'Ficheiro MP3 é obrigatório';
-        
-        return null; // Sem erros
+        return null;
     };
 
     const handleSave = async () => {
@@ -78,14 +66,13 @@ const AddPlaylistModal = ({ isOpen, onClose, therapistId, setNotification }) => 
             setUploadProgress('A carregar imagem de capa...');
             const imageUrl = await uploadToCloudinary(imageFile, 'image');
 
-            // 2. Upload do Conteúdo (se for ficheiro MP3)
+            // 2. Upload do Conteúdo
             let contentUrl = '';
-            let contentTypeFirebase = 'video'; // por defeito
+            let contentTypeFirebase = 'video'; 
 
             if (contentType === 'audioFile') {
                 contentTypeFirebase = 'audio';
                 setUploadProgress('A carregar ficheiro de áudio (MP3)...');
-                // O PatientDetailModal.js usava 'video/upload' para MP3, vamos manter
                 contentUrl = await uploadToCloudinary(contentMp3File, 'video'); 
             } else { // 'videoLink'
                 contentTypeFirebase = 'video';
@@ -104,16 +91,23 @@ const AddPlaylistModal = ({ isOpen, onClose, therapistId, setNotification }) => 
             };
             const playlistDocRef = await addDoc(collection(db, "playlists"), playlistData);
             
-            // 4. Adicionar o Conteúdo na subcoleção da Playlist
+            // 4. Adicionar o Conteúdo na subcoleção
             setUploadProgress('A salvar conteúdo...');
             const contentData = {
                 name: contentName.trim(),
                 artist: contentArtist.trim(),
                 type: contentTypeFirebase,
                 ...(contentTypeFirebase === 'audio' ? { url: contentUrl } : { videoUrl: contentUrl }),
-                createdAt: serverTimestamp() // Usar serverTimestamp aqui também
+                createdAt: serverTimestamp()
             };
             await addDoc(collection(db, 'playlists', playlistDocRef.id, 'content'), contentData);
+
+            // --- ATUALIZAÇÃO (IDEIA 3) ---
+            // 5. Chamar o callback (se existir) com o ID da nova playlist
+            if (onPlaylistCreated) {
+                onPlaylistCreated(playlistDocRef.id);
+            }
+            // -----------------------------
 
             setNotification({ message: 'Playlist criada com sucesso!', type: 'success' });
             handleClose(); // Limpa e fecha o modal
@@ -128,7 +122,7 @@ const AddPlaylistModal = ({ isOpen, onClose, therapistId, setNotification }) => 
     };
     
     // --- LÓGICA DO COMPONENTE ---
-
+    // (handleFileSelected e handleClose sem alterações)
     const handleFileSelected = (file) => {
         if (file) {
             setImageFile(file);
@@ -136,9 +130,8 @@ const AddPlaylistModal = ({ isOpen, onClose, therapistId, setNotification }) => 
         }
     };
     
-    // Limpa o formulário ao fechar
     const handleClose = () => {
-        if (isUploading) return; // Não deixa fechar durante o upload
+        if (isUploading) return; 
         setName('');
         setDesc('');
         setImageFile(null);
@@ -155,7 +148,7 @@ const AddPlaylistModal = ({ isOpen, onClose, therapistId, setNotification }) => 
 
     if (!isOpen) { return null; }
     
-    // Estilos (combinados)
+    // Estilos (sem alterações)
     const styles = {
         overlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, overflowY: 'auto' },
         modal: { backgroundColor: '#FFFFFF', margin: '2rem 0', padding: '2rem', borderRadius: '16px', width: '90%', maxWidth: '550px', boxShadow: '0 10px 30px rgba(0,0,0,0.1)' },
@@ -176,6 +169,7 @@ const AddPlaylistModal = ({ isOpen, onClose, therapistId, setNotification }) => 
         uploadProgressText: { textAlign: 'center', color: '#8B5CF6', fontWeight: '600', height: '20px' }
     };
 
+    // Render (sem alterações)
     return (
         <div style={styles.overlay}>
             <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
@@ -185,9 +179,7 @@ const AddPlaylistModal = ({ isOpen, onClose, therapistId, setNotification }) => 
                 </div>
                 
                 <div style={styles.form}>
-                    
                     <h3 style={styles.sectionTitle}>1. Detalhes da Playlist</h3>
-                    
                     <div style={styles.avatarContainer}>
                         <AvatarUploader
                             src={imagePreviewUrl}
@@ -198,7 +190,6 @@ const AddPlaylistModal = ({ isOpen, onClose, therapistId, setNotification }) => 
                             initials="PL" 
                         />
                     </div>
-                    
                     <div style={styles.inputGroup}>
                         <label htmlFor="name" style={styles.label}>Nome da Playlist</label>
                         <input type="text" id="name" style={styles.input} value={name} onChange={(e) => setName(e.target.value)} disabled={isUploading} />
@@ -207,10 +198,7 @@ const AddPlaylistModal = ({ isOpen, onClose, therapistId, setNotification }) => 
                         <label htmlFor="desc" style={styles.label}>Descrição</label>
                         <input type="text" id="desc" style={styles.input} value={desc} onChange={(e) => setDesc(e.target.value)} disabled={isUploading} />
                     </div>
-
-                    {/* --- Secção de Conteúdo --- */}
                     <h3 style={styles.sectionTitle}>2. Primeiro Conteúdo</h3>
-
                     <div style={styles.inputGroup}>
                         <label htmlFor="contentType" style={styles.label}>Tipo de Conteúdo</label>
                         <select id="contentType" style={styles.select} value={contentType} onChange={(e) => setContentType(e.target.value)} disabled={isUploading}>
@@ -218,18 +206,14 @@ const AddPlaylistModal = ({ isOpen, onClose, therapistId, setNotification }) => 
                             <option value="audioFile">Ficheiro de Áudio (MP3)</option>
                         </select>
                     </div>
-
                     <div style={styles.inputGroup}>
                         <label htmlFor="contentName" style={styles.label}>Nome do Conteúdo</label>
                         <input type="text" id="contentName" style={styles.input} value={contentName} onChange={(e) => setContentName(e.target.value)} disabled={isUploading} />
                     </div>
-                    
                     <div style={styles.inputGroup}>
                         <label htmlFor="contentArtist" style={styles.label}>Artista/Autor (Opcional)</label>
                         <input type="text" id="contentArtist" style={styles.input} value={contentArtist} onChange={(e) => setContentArtist(e.target.value)} disabled={isUploading} />
                     </div>
-
-                    {/* Input Condicional (MP3 ou Link) */}
                     {contentType === 'videoLink' ? (
                         <div style={styles.inputGroup}>
                             <label htmlFor="contentVideoUrl" style={styles.label}>URL do Vídeo</label>
@@ -241,13 +225,10 @@ const AddPlaylistModal = ({ isOpen, onClose, therapistId, setNotification }) => 
                             <input type="file" id="contentMp3File" style={styles.input} accept=".mp3" onChange={(e) => setContentMp3File(e.target.files[0])} disabled={isUploading} />
                         </div>
                     )}
-
                 </div>
-
                 <div style={styles.uploadProgressText}>
                     {isUploading ? uploadProgress : ''}
                 </div>
-
                 <div style={styles.footer}>
                     <button style={{ ...styles.button, ...styles.cancelButton }} onClick={handleClose} disabled={isUploading}>
                         Cancelar

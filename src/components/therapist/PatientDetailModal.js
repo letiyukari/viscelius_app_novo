@@ -37,6 +37,7 @@ const PatientDetailModal = ({ patient, onClose, setNotification }) => {
         value: { fontSize: '16px', color: '#1F2937', padding: '12px', backgroundColor: '#F9FAFB', borderRadius: '8px' },
         goalsValue: { fontSize: '16px', color: '#1F2937', padding: '12px', backgroundColor: '#F9FAFB', borderRadius: '8px', whiteSpace: 'pre-wrap', lineHeight: '1.6' },
         footer: { display: 'flex', justifyContent: 'flex-end', marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid #E5E7EB' },
+        // REVERTIDO: Estilo do botão
         button: { padding: '12px 24px', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: '600', cursor: 'pointer', backgroundColor: '#8B5CF6', color: 'white' },
         
         // REMOVIDO: Estilos da secção de material
@@ -66,6 +67,7 @@ const PatientDetailModal = ({ patient, onClose, setNotification }) => {
                     {/* REMOVIDO: A secção inteira de "Enviar Materiais" foi retirada daqui */}
                     
                 </div>
+                {/* REVERTIDO: Rodapé original com um botão */}
                 <div style={styles.footer}>
                     <button style={styles.button} onClick={onClose}>Fechar</button>
                 </div>
