@@ -1,7 +1,4 @@
 // src/screens/therapist/AgendaConfigPage.js
-// Pagina do TERAPEUTA para publicar/gerenciar disponibilidade (slots)
-// Inclui aprovacao/recusa de solicitacoes (HELD) e exclusao de slots OPEN.
-
 import React, { useEffect, useMemo, useState } from "react";
 import { doc, getDoc } from "firebase/firestore";
 import {
@@ -10,8 +7,10 @@ import {
   deleteSlot,
   approveAppointment,
   declineAppointment,
+  cancelAppointment,
   subscribeTherapistAppointments,
   completeAppointment,
+  updateAppointmentDetails,
 } from "../../services/agenda";
 import { useAuth } from "../../context/AuthContext";
 import { getMultipleUserProfiles } from "../../services/usersService";
@@ -19,376 +18,105 @@ import RecordConsultationModal from "../../components/therapist/RecordConsultati
 import { db } from "../../firebase";
 
 // ===== helpers de data =====
-function pad(v, n = 2) {
-  return String(v).padStart(n, "0");
-}
-function toLocalInputDate(d = new Date()) {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-function combineDateTime(dateStr, timeStr) {
-  // date: yyyy-mm-dd, time: HH:mm -> ISO
-  return new Date(`${dateStr}T${timeStr}:00`).toISOString();
-}
-function fmtDateWithWeekday(dt) {
-  try {
-    const date = new Date(dt);
-    const datePart = date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
-    const weekday = date.toLocaleDateString("pt-BR", { weekday: "long" });
-    return `${datePart} (${weekday})`;
-  } catch {
-    return dt;
-  }
-}
-function fmtTime(dt) {
-  try {
-    return new Date(dt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  } catch {
-    return dt;
-  }
-}
-function fmtRange(start, end) {
-  try {
-    const arrow = String.fromCharCode(0x2192);
-    return `${fmtDateWithWeekday(start)} ${arrow} ${fmtTime(start)} - ${fmtTime(end)}`;
-  } catch {
-    return `${start} -> ${end}`;
-  }
-}
-
-
-function parseDate(value) {
-  if (!value) return null;
-  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function startOfDay(date = new Date()) {
-  const copy = new Date(date);
-  copy.setHours(0, 0, 0, 0);
-  return copy;
-}
-
-function endOfDay(date = new Date()) {
-  const copy = new Date(date);
-  copy.setHours(23, 59, 59, 999);
-  return copy;
-}
-
-function addDays(base, days) {
-  const copy = new Date(base);
-  copy.setDate(copy.getDate() + Number(days || 0));
-  return copy;
-}
-
-function isSameDay(dateA, dateB) {
-  const a = parseDate(dateA);
-  const b = parseDate(dateB);
-  if (!a || !b) return false;
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
-}
-
-function isWithinNextHours(target, hours) {
-  const date = parseDate(target);
-  if (!date) return false;
-  const now = new Date();
-  const limit = new Date(now.getTime() + hours * 60 * 60 * 1000);
-  return date >= now && date <= limit;
-}
-
-function isWithinNextDays(target, days) {
-  const date = parseDate(target);
-  if (!date) return false;
-  const now = startOfDay(new Date());
-  const limit = endOfDay(addDays(now, days));
-  return date >= now && date <= limit;
-}
-
-function compareAsc(a, b) {
-  return parseDate(a)?.getTime() - parseDate(b)?.getTime();
-}
-
-function compareDesc(a, b) {
-  return parseDate(b)?.getTime() - parseDate(a)?.getTime();
-}
+function pad(v, n = 2) { return String(v).padStart(n, "0"); }
+function toLocalInputDate(d = new Date()) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
+function combineDateTime(dateStr, timeStr) { return new Date(`${dateStr}T${timeStr}:00`).toISOString(); }
+function fmtDateWithWeekday(dt) { try { const date = new Date(dt); const datePart = date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }); const weekday = date.toLocaleDateString("pt-BR", { weekday: "long" }); return `${datePart} (${weekday})`; } catch { return dt; } }
+function fmtTime(dt) { try { return new Date(dt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch { return dt; } }
+function fmtRange(start, end) { try { const arrow = String.fromCharCode(0x2192); return `${fmtDateWithWeekday(start)} ${arrow} ${fmtTime(start)} - ${fmtTime(end)}`; } catch { return `${start} -> ${end}`; } }
+function parseDate(value) { if (!value) return null; if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value; const date = new Date(value); return Number.isNaN(date.getTime()) ? null : date; }
+function startOfDay(date = new Date()) { const copy = new Date(date); copy.setHours(0, 0, 0, 0); return copy; }
+function endOfDay(date = new Date()) { const copy = new Date(date); copy.setHours(23, 59, 59, 999); return copy; }
+function addDays(base, days) { const copy = new Date(base); copy.setDate(copy.getDate() + Number(days || 0)); return copy; }
+function isSameDay(dateA, dateB) { const a = parseDate(dateA); const b = parseDate(dateB); if (!a || !b) return false; return ( a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate() ); }
+function isWithinNextHours(target, hours) { const date = parseDate(target); if (!date) return false; const now = new Date(); const limit = new Date(now.getTime() + hours * 60 * 60 * 1000); return date >= now && date <= limit; }
+function isWithinNextDays(target, days) { const date = parseDate(target); if (!date) return false; const now = startOfDay(new Date()); const limit = endOfDay(addDays(now, days)); return date >= now && date <= limit; }
+function compareAsc(a, b) { return parseDate(a)?.getTime() - parseDate(b)?.getTime(); }
+function compareDesc(a, b) { return parseDate(b)?.getTime() - parseDate(a)?.getTime(); }
 
 const styles = {
-  page: {
-    background: "#F9FAFB",
-    minHeight: "100vh",
-    padding: "2.5rem 3.5rem",
-    display: "flex",
-    flexDirection: "column",
-    gap: "1.5rem",
-  },
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-    flexWrap: "wrap",
-    gap: "1rem",
-  },
+  page: { background: "#F9FAFB", minHeight: "100vh", padding: "2.5rem 3.5rem", display: "flex", flexDirection: "column", gap: "1.5rem" },
+  header: { display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: "1rem" },
   title: { margin: 0, fontSize: "2rem", fontWeight: 800, color: "#111827" },
   subtitle: { margin: "0.25rem 0 0 0", color: "#6B7280", maxWidth: 520 },
   filtersBar: { display: "flex", gap: "0.75rem", alignItems: "center" },
-  filterLabel: {
-    fontSize: 14,
-    color: "#6B7280",
-    display: "flex",
-    alignItems: "center",
-    gap: "0.35rem",
-  },
-  select: {
-    border: "1px solid #D1D5DB",
-    borderRadius: 8,
-    padding: "0.45rem 0.75rem",
-    fontSize: 14,
-    background: "#FFFFFF",
-    color: "#374151",
-  },
-  summaryRow: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-    gap: "1rem",
-  },
-  summaryCard: {
-    background: "#FFFFFF",
-    borderRadius: 16,
-    border: "1px solid #E5E7EB",
-    padding: "1.25rem",
-    display: "flex",
-    flexDirection: "column",
-    gap: "0.35rem",
-  },
+  filterLabel: { fontSize: 14, color: "#6B7280", display: "flex", alignItems: "center", gap: "0.35rem" },
+  select: { border: "1px solid #D1D5DB", borderRadius: 8, padding: "0.45rem 0.75rem", fontSize: 14, background: "#FFFFFF", color: "#374151" },
+  summaryRow: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "1rem" },
+  summaryCard: { background: "#FFFFFF", borderRadius: 16, border: "1px solid #E5E7EB", padding: "1.25rem", display: "flex", flexDirection: "column", gap: "0.35rem" },
   summaryLabel: { color: "#6B7280", fontSize: 14, fontWeight: 500 },
   summaryValue: { color: "#111827", fontSize: "2rem", fontWeight: 800 },
   summaryHint: { color: "#6B7280", fontSize: 13, lineHeight: 1.4 },
-  mainLayout: {
-    display: "grid",
-    gap: "1.5rem",
-    gridTemplateColumns: "minmax(0, 1fr) 320px",
-  },
+  mainLayout: { display: "grid", gap: "1.5rem", gridTemplateColumns: "minmax(0, 1fr) 320px" },
   mainColumn: { display: "flex", flexDirection: "column", gap: "1.5rem" },
   sidebar: { display: "flex", flexDirection: "column", gap: "1.5rem" },
-  sectionCard: {
-    background: "#FFFFFF",
-    borderRadius: 16,
-    border: "1px solid #E5E7EB",
-    padding: "1.5rem",
-    display: "flex",
-    flexDirection: "column",
-    gap: "1rem",
-  },
-  sectionHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: "0.75rem",
-    flexWrap: "wrap",
-  },
+  sectionCard: { background: "#FFFFFF", borderRadius: 16, border: "1px solid #E5E7EB", padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem" },
+  sectionHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" },
   sectionTitle: { margin: 0, fontSize: "1.25rem", fontWeight: 700, color: "#1F2937" },
   sectionActions: { display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" },
   chipGroup: { display: "flex", gap: "0.5rem", flexWrap: "wrap" },
-  chip: {
-    border: "1px solid #D1D5DB",
-    borderRadius: 999,
-    padding: "0.35rem 0.9rem",
-    fontSize: 13,
-    fontWeight: 500,
-    color: "#374151",
-    background: "#FFFFFF",
-    cursor: "pointer",
-    transition: "all 0.2s ease",
-  },
+  chip: { border: "1px solid #D1D5DB", borderRadius: 999, padding: "0.35rem 0.9rem", fontSize: 13, fontWeight: 500, color: "#374151", background: "#FFFFFF", cursor: "pointer", transition: "all 0.2s ease" },
   chipActive: { background: "#EEF2FF", borderColor: "#6366F1", color: "#3730A3" },
   pendingList: { display: "grid", gap: "0.75rem" },
-  pendingItem: {
-    border: "1px solid #E5E7EB",
-    borderRadius: 14,
-    padding: "1rem",
-    display: "grid",
-    gap: "0.75rem",
-    background: "#F9FAFB",
-  },
-  pendingItemRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: "1rem",
-    flexWrap: "wrap",
-    alignItems: "flex-start",
-  },
+  pendingItem: { border: "1px solid #E5E7EB", borderRadius: 14, padding: "1rem", display: "grid", gap: "0.75rem", background: "#F9FAFB" },
+  pendingItemRow: { display: "flex", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap", alignItems: "flex-start" },
   pendingInfo: { display: "flex", flexDirection: "column", gap: "0.35rem" },
   pendingActions: { display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" },
-  button: {
-    borderRadius: 12,
-    border: "none",
-    padding: "0.55rem 1.1rem",
-    fontWeight: 600,
-    cursor: "pointer",
-    fontSize: 14,
-  },
+  button: { borderRadius: 12, border: "none", padding: "0.55rem 1.1rem", fontWeight: 600, cursor: "pointer", fontSize: 14 },
   buttonSecondary: { background: "#FEE2E2", color: "#B91C1C" },
   buttonSuccess: { background: "#22C55E", color: "#FFFFFF" },
-  buttonOutline: {
-    borderRadius: 12,
-    border: "1px solid #D1D5DB",
-    background: "#FFFFFF",
-    color: "#374151",
-    padding: "0.5rem 1rem",
-    fontWeight: 600,
-    cursor: "pointer",
-  },
-  urgencyBadge: {
-    background: "#F97316",
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: 700,
-    borderRadius: 999,
-    padding: "0.2rem 0.65rem",
-    textTransform: "uppercase",
-    letterSpacing: "0.04em",
-  },
-  metaRow: {
-    display: "flex",
-    gap: "0.75rem",
-    flexWrap: "wrap",
-    alignItems: "center",
-    color: "#6B7280",
-    fontSize: 13,
-  },
-  statusBadge: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "0.35rem",
-    padding: "0.25rem 0.75rem",
-    borderRadius: 999,
-    fontWeight: 600,
-    fontSize: 12,
-    textTransform: "uppercase",
-  },
+  buttonOutline: { borderRadius: 12, border: "1px solid #D1D5DB", background: "#FFFFFF", color: "#374151", padding: "0.5rem 1rem", fontWeight: 600, cursor: "pointer" },
+  urgencyBadge: { background: "#F97316", color: "#FFFFFF", fontSize: 12, fontWeight: 700, borderRadius: 999, padding: "0.2rem 0.65rem", textTransform: "uppercase", letterSpacing: "0.04em" },
+  metaRow: { display: "flex", gap: "0.75rem", flexWrap: "wrap", alignItems: "center", color: "#6B7280", fontSize: 13 },
+  statusBadge: { display: "inline-flex", alignItems: "center", gap: "0.35rem", padding: "0.25rem 0.75rem", borderRadius: 999, fontWeight: 600, fontSize: 12, textTransform: "uppercase" },
   statusDot: { width: 8, height: 8, borderRadius: "50%" },
   calendarGrid: { display: "grid", gap: "1rem" },
   dayColumn: { border: "1px solid #E5E7EB", borderRadius: 16, background: "#FFFFFF" },
-  dayHeader: {
-    background: "#F3F4F6",
-    borderRadius: "16px 16px 0 0",
-    padding: "1rem 1.25rem",
-    fontWeight: 700,
-    color: "#111827",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
+  dayHeader: { background: "#F3F4F6", borderRadius: "16px 16px 0 0", padding: "1rem 1.25rem", fontWeight: 700, color: "#111827", display: "flex", justifyContent: "space-between", alignItems: "center" },
   dayList: { display: "grid", gap: "0.75rem", padding: "1rem 1.25rem" },
-  slotCard: {
-    border: "1px solid #E5E7EB",
-    borderRadius: 12,
-    padding: "0.75rem 1rem",
-    display: "flex",
-    justifyContent: "space-between",
-    gap: "0.75rem",
-    alignItems: "flex-start",
-    background: "#FFFFFF",
-  },
+  slotCard: { border: "1px solid #E5E7EB", borderRadius: 12, padding: "0.75rem 1rem", display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "flex-start", background: "#FFFFFF" },
   slotInfo: { display: "flex", flexDirection: "column", gap: "0.35rem" },
   slotActions: { display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" },
   slotTime: { fontWeight: 700, color: "#111827" },
   slotPatient: { color: "#6B7280", fontSize: 13 },
-  emptyState: {
-    border: "1px dashed #D1D5DB",
-    borderRadius: 12,
-    padding: "1.25rem",
-    textAlign: "center",
-    color: "#6B7280",
-    fontStyle: "italic",
-  },
+  emptyState: { border: "1px dashed #D1D5DB", borderRadius: 12, padding: "1.25rem", textAlign: "center", color: "#6B7280", fontStyle: "italic" },
   movementsList: { display: "grid", gap: "0.75rem" },
-  movementItem: {
-    border: "1px solid #E5E7EB",
-    borderRadius: 14,
-    padding: "1rem",
-    background: "#FFFFFF",
-    display: "flex",
-    justifyContent: "space-between",
-    gap: "0.75rem",
-    flexWrap: "wrap",
-  },
+  movementItem: { border: "1px solid #E5E7EB", borderRadius: 14, padding: "1rem", background: "#FFFFFF", display: "flex", justifyContent: "space-between", gap: "0.75rem", flexWrap: "wrap" },
   movementInfo: { display: "flex", flexDirection: "column", gap: "0.35rem" },
   publishFormTitle: { margin: 0, fontSize: "1.1rem", fontWeight: 700, color: "#111827" },
-  publishForm: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "0.75rem",
-    background: "#F9FAFB",
-    borderRadius: 12,
-    padding: "1.1rem",
-    border: "1px solid #E5E7EB",
-  },
-  formGrid: {
-    display: "grid",
-    gap: "0.75rem",
-    gridTemplateColumns: "1fr",
-  },
-  input: {
-    width: "100%",
-    height: 44,
-    border: "1px solid #D1D5DB",
-    borderRadius: 10,
-    padding: "0 12px",
-    fontSize: 14,
-    boxSizing: "border-box",
-  },
-  publishButton: {
-    background: "#7C3AED",
-    color: "#FFFFFF",
-    border: "none",
-    borderRadius: 12,
-    height: 44,
-    fontWeight: 700,
-    cursor: "pointer",
-  },
+  publishForm: { display: "flex", flexDirection: "column", gap: "0.75rem", background: "#F9FAFB", borderRadius: 12, padding: "1.1rem", border: "1px solid #E5E7EB" },
+  formGrid: { display: "grid", gap: "0.75rem", gridTemplateColumns: "1fr" },
+  input: { width: "100%", height: 44, border: "1px solid #D1D5DB", borderRadius: 10, padding: "0 12px", fontSize: 14, boxSizing: "border-box" },
+  publishButton: { background: "#7C3AED", color: "#FFFFFF", border: "none", borderRadius: 12, height: 44, fontWeight: 700, cursor: "pointer" },
   feedbackBox: { borderRadius: 12, padding: "0.9rem 1.1rem", fontWeight: 500 },
   feedbackSuccess: { background: "#ECFDF5", color: "#047857", border: "1px solid #6EE7B7" },
   feedbackError: { background: "#FEF2F2", color: "#B91C1C", border: "1px solid #FCA5A5" },
-  feedbackClose: {
-    background: "transparent",
-    border: "none",
-    color: "inherit",
-    fontSize: "1rem",
-    fontWeight: 700,
-    cursor: "pointer",
-    lineHeight: 1,
-  },
+  feedbackClose: { background: "transparent", border: "none", color: "inherit", fontSize: "1rem", fontWeight: 700, cursor: "pointer", lineHeight: 1 },
   link: { color: "#2563EB", textDecoration: "underline", fontWeight: 600 },
   divider: { height: 1, background: "#E5E7EB", margin: "0.5rem 0" },
 };
 
-
-
 const SLOT_STATUS_META = {
-  OPEN: { label: "Aberto", color: "#1D4ED8", background: "#DBEAFE" },
+  // ALTERADO: "Disponível" em vez de "Aberto"
+  OPEN: { label: "Disponível", color: "#1D4ED8", background: "#DBEAFE" },
   HELD: { label: "Solicitado", color: "#A16207", background: "#FEF3C7" },
   BOOKED: { label: "Reservado", color: "#047857", background: "#DCFCE7" },
 };
 
 const APPOINTMENT_STATUS_META = {
   pending: { label: "Pendente", color: "#D97706", background: "#FEF3C7" },
-  confirmed: { label: "Confirmada", color: "#047857", background: "#DCFCE7" },
-  canceled: { label: "Cancelada", color: "#B91C1C", background: "#FEE2E2" },
-  completed: { label: "Concluída", color: "#4C1D95", background: "#EDE9FE" },
-  declined: { label: "Recusada", color: "#6B7280", background: "#F3F4F6" },
+  confirmed: { label: "Confirmado", color: "#047857", background: "#DCFCE7" },
+  canceled: { label: "Cancelado", color: "#B91C1C", background: "#FEE2E2" },
+  // ALTERADO: "Finalizado" (Masculino)
+  completed: { label: "Finalizado", color: "#047857", background: "#DCFCE7" },
+  declined: { label: "Recusado", color: "#6B7280", background: "#F3F4F6" },
 };
 
 const normalizeStatus = (value) => String(value || "").toLowerCase();
 const statusEquals = (value, target) => normalizeStatus(value) === target;
-const formatStatusTag = (value) => normalizeStatus(value).toUpperCase() || "";
 
 export default function AgendaConfigPage() {
-  const { user } = useAuth(); // ja usado no seu app
+  const { user } = useAuth();
   const therapistId = user?.uid || user?.id;
 
   // formulario
@@ -549,7 +277,7 @@ export default function AgendaConfigPage() {
   ];
   const movementList = movements[movementsTab] || [];
 
-const fallbackName = "Usuario";
+  const fallbackName = "Usuario";
   const getDisplayName = (uid) => {
     if (!uid) return fallbackName;
     const profile = profiles[uid];
@@ -623,6 +351,11 @@ const fallbackName = "Usuario";
   const handleDecline = (apptId) =>
     applyOptimisticStatus(apptId, "declined", () => declineAppointment(apptId));
 
+  const handleCancel = (apptId) => {
+    if (!window.confirm("Tem certeza que deseja cancelar este agendamento?")) return;
+    applyOptimisticStatus(apptId, "canceled", () => cancelAppointment(apptId));
+  };
+
   const handleRecordConsultation = async (appt) => {
     setFeedback(null);
     if (!appt?.id) {
@@ -650,32 +383,27 @@ const fallbackName = "Usuario";
   };
 
   const handleConsultationSave = async (payload) => {
-    if (!recordingAppointment?.id) {
-      throw new Error("Nenhum agendamento selecionado.");
-    }
+    if (!recordingAppointment?.id) throw new Error("Nenhum agendamento selecionado.");
     try {
-      await completeAppointment(recordingAppointment.id, {
-        ...payload,
-        updatedBy: therapistId,
-      });
-      setFeedback({ type: "success", message: "Sessão registrada no histórico do paciente." });
+      if (payload.isFinalizing) {
+        await completeAppointment(recordingAppointment.id, {
+          ...payload,
+          updatedBy: therapistId,
+        });
+        setFeedback({ type: "success", message: "Sessão finalizada e movida para o histórico." });
+      } else {
+        await updateAppointmentDetails(recordingAppointment.id, {
+          ...payload,
+          updatedBy: therapistId,
+        });
+        setFeedback({ type: "success", message: "Detalhes da sessão atualizados." });
+      }
       setRecordingAppointment(null);
     } catch (error) {
-      console.error("completeAppointment", error);
-      setFeedback({
-        type: "error",
-        message: error?.message || "Não foi possível salvar a sessão.",
-      });
+      console.error("save error", error);
+      setFeedback({ type: "error", message: error?.message || "Erro ao salvar." });
       throw error;
     }
-  };
-
-  const handleGenerateLink = () => {
-    alert("Função de gerar link da sessão ainda não está disponível.");
-  };
-
-  const handleSendReminder = () => {
-    alert("Função de enviar lembrete ainda não está disponível.");
   };
 
   const renderStatusBadge = (meta) => (
@@ -685,7 +413,7 @@ const fallbackName = "Usuario";
     </span>
   );
 
-﻿  return (
+  return (
     <div style={styles.page}>
       <RecordConsultationModal
         open={Boolean(recordingAppointment)}
@@ -852,23 +580,39 @@ const fallbackName = "Usuario";
                     <div style={styles.dayList}>
                       {group.slots.map((slot) => {
                         const statusKey = String(slot.status || "").toUpperCase();
-                        const meta = SLOT_STATUS_META[statusKey] || {
+                        let meta = SLOT_STATUS_META[statusKey] || {
                           label: statusKey,
                           color: "#374151",
                           background: "#E5E7EB",
                         };
+                        
                         const relatedPending = pending.find(
                           (appt) =>
                             appt.slotStartsAt === slot.startsAt && appt.slotEndsAt === slot.endsAt
                         );
-                        const relatedConfirmed = confirmed.find(
-                          (appt) =>
-                            appt.slotStartsAt === slot.startsAt && appt.slotEndsAt === slot.endsAt
-                        );
+                        const relatedActive =
+                          confirmed.find(
+                            (appt) =>
+                              appt.slotStartsAt === slot.startsAt && appt.slotEndsAt === slot.endsAt
+                          ) ||
+                          completed.find(
+                            (appt) =>
+                              appt.slotStartsAt === slot.startsAt && appt.slotEndsAt === slot.endsAt
+                          );
+
+                        if (relatedActive) {
+                            const st = normalizeStatus(relatedActive.status);
+                            if (st === 'completed') {
+                                meta = APPOINTMENT_STATUS_META.completed;
+                            } else if (st === 'confirmed') {
+                                meta = APPOINTMENT_STATUS_META.confirmed;
+                            }
+                        }
+
                         const patientName =
                           (slot.requestedBy && getDisplayName(slot.requestedBy)) ||
                           (relatedPending?.patientId && getDisplayName(relatedPending.patientId)) ||
-                          (relatedConfirmed?.patientId && getDisplayName(relatedConfirmed.patientId)) ||
+                          (relatedActive?.patientId && getDisplayName(relatedActive.patientId)) ||
                           null;
 
                         return (
@@ -902,7 +646,7 @@ const fallbackName = "Usuario";
                                     disabled={actionState[relatedPending.id]?.loading}
                                     style={{ ...styles.button, ...styles.buttonSecondary }}
                                   >
-                                    {actionState[relatedPending.id]?.loading ? "Processando..." : "Recusar"}
+                                    Recusar
                                   </button>
                                   <button
                                     type="button"
@@ -910,17 +654,35 @@ const fallbackName = "Usuario";
                                     disabled={actionState[relatedPending.id]?.loading}
                                     style={{ ...styles.button, ...styles.buttonSuccess }}
                                   >
-                                    {actionState[relatedPending.id]?.loading ? "Processando..." : "Confirmar"}
+                                    Confirmar
                                   </button>
                                 </>
-                              ) : statusKey === "BOOKED" && relatedConfirmed ? (
-                                <button
-                                  type="button"
-                                  onClick={() => handleRecordConsultation(relatedConfirmed)}
-                                  style={styles.buttonOutline}
-                                >
-                                  Registrar histórico
-                                </button>
+                              ) : statusKey === "BOOKED" && relatedActive ? (
+                                <>
+                                  {normalizeStatus(relatedActive.status) !== 'completed' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCancel(relatedActive.id)}
+                                        disabled={actionState[relatedActive.id]?.loading}
+                                        style={{
+                                          ...styles.button,
+                                          ...styles.buttonSecondary,
+                                          marginRight: "0.5rem",
+                                        }}
+                                      >
+                                        {actionState[relatedActive.id]?.loading
+                                          ? "..."
+                                          : "Cancelar"}
+                                      </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRecordConsultation(relatedActive)}
+                                    style={styles.buttonOutline}
+                                  >
+                                    Registrar histórico
+                                  </button>
+                                </>
                               ) : null}
                             </div>
                           </div>
@@ -958,7 +720,9 @@ const fallbackName = "Usuario";
             ) : (
               <div style={styles.movementsList}>
                 {movementList.map((appt) => {
-                  const statusMeta = APPOINTMENT_STATUS_META[normalizeStatus(appt.status)] || APPOINTMENT_STATUS_META.pending;
+                  const statusMeta =
+                    APPOINTMENT_STATUS_META[normalizeStatus(appt.status)] ||
+                    APPOINTMENT_STATUS_META.pending;
                   return (
                     <div key={appt.id} style={styles.movementItem}>
                       <div style={styles.movementInfo}>
@@ -973,17 +737,6 @@ const fallbackName = "Usuario";
                           Última atualização: {fmtDateWithWeekday(appt.slotStartsAt)}
                         </span>
                       </div>
-                      {movementsTab === "confirmed" && (
-                        <div style={styles.slotActions}>
-                          <button
-                            type="button"
-                            onClick={() => handleRecordConsultation(appt)}
-                            style={styles.buttonOutline}
-                          >
-                            Registrar sessão
-                          </button>
-                        </div>
-                      )}
                     </div>
                   );
                 })}
@@ -1031,27 +784,4 @@ const fallbackName = "Usuario";
       </div>
     </div>
   );
-
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

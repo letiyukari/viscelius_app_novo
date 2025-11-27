@@ -185,9 +185,93 @@ export async function listAppointmentsByUser(userId, role) {
   return snap.docs.map(mapAppointmentSnapshot);
 }
 
-// ... (Demais funções mantidas)
-export async function regenerateAppointmentMeeting(appointmentId, options = {}) { const apptRef = doc(db, "appointments", appointmentId); const apptSnap = await getDoc(apptRef); if (!apptSnap.exists()) throw new Error("Agendamento nao encontrado"); const appt = apptSnap.data(); if (normalizeAppointmentStatus(appt.status) !== "confirmed") throw new Error("Somente consultas confirmadas podem gerar link"); const meetingFields = prepareJitsiMeetingFields(appointmentId, appt, options); await updateDoc(apptRef, { ...meetingFields, updatedAt: serverTimestamp() }); return meetingFields; }
-export async function completeAppointment(appointmentId, payload = {}) { const apptRef = doc(db, "appointments", appointmentId); const apptSnap = await getDoc(apptRef); if (!apptSnap.exists()) throw new Error("Agendamento nao encontrado"); const appt = apptSnap.data(); const actorId = payload.updatedBy || appt.therapistId; const therapistId = appt.therapistId || actorId; const completedDate = new Date(); const completedTs = Timestamp.fromDate(completedDate); const meetingData = extractMeetingFromAppointment(appt, payload.meeting); const resources = { playlists: payload?.resources?.playlists || [], exercises: payload?.resources?.exercises || [], files: payload?.resources?.files || [] }; const followUp = { tasks: payload?.followUp?.tasks || [], reminderAt: payload?.followUp?.reminderAt || null }; const consultationPayload = { appointmentId, therapistId, patientId: appt.patientId, startsAt: coerceTimestamp(appt.startTime, appt.slotStartsAt) ?? appt.slotStartsAt, endsAt: coerceTimestamp(appt.endTime, appt.slotEndsAt) ?? appt.slotEndsAt, sessionStatus: "COMPLETED", meeting: meetingData, summaryNotes: payload.summaryNotes ?? "", resources, followUp, completedAt: completedDate, createdBy: actorId, updatedBy: actorId }; let consultationId = appt.historyId || null; if (consultationId) { await updateConsultation(consultationId, consultationPayload); } else { const result = await createConsultation(consultationPayload); consultationId = result?.id || null; } await updateDoc(apptRef, { status: normalizeAppointmentStatus("COMPLETED"), sessionStatus: normalizeSessionStatus("COMPLETED"), completedAt: completedTs, historyId: consultationId, updatedAt: serverTimestamp() }); return { consultationId }; }
+export async function regenerateAppointmentMeeting(appointmentId, options = {}) { 
+  const apptRef = doc(db, "appointments", appointmentId); 
+  const apptSnap = await getDoc(apptRef); 
+  if (!apptSnap.exists()) throw new Error("Agendamento nao encontrado"); 
+  const appt = apptSnap.data(); 
+  if (normalizeAppointmentStatus(appt.status) !== "confirmed") throw new Error("Somente consultas confirmadas podem gerar link"); 
+  const meetingFields = prepareJitsiMeetingFields(appointmentId, appt, options); 
+  await updateDoc(apptRef, { ...meetingFields, updatedAt: serverTimestamp() }); 
+  return meetingFields; 
+}
+
+// NOVA FUNÇÃO: Apenas atualiza detalhes sem finalizar
+export async function updateAppointmentDetails(appointmentId, payload = {}) {
+    const apptRef = doc(db, "appointments", appointmentId);
+    const updates = {
+        updatedAt: serverTimestamp()
+    };
+    
+    if (payload.summaryNotes !== undefined) {
+        updates.summaryNotes = payload.summaryNotes;
+        updates.notes = payload.summaryNotes; // Compatibilidade
+    }
+    
+    if (payload.meetingUrl !== undefined) {
+        updates.meetingUrl = payload.meetingUrl;
+    }
+
+    await updateDoc(apptRef, updates);
+}
+
+export async function completeAppointment(appointmentId, payload = {}) { 
+    const apptRef = doc(db, "appointments", appointmentId); 
+    const apptSnap = await getDoc(apptRef); 
+    if (!apptSnap.exists()) throw new Error("Agendamento nao encontrado"); 
+    const appt = apptSnap.data(); 
+    
+    const actorId = payload.updatedBy || appt.therapistId; 
+    const therapistId = appt.therapistId || actorId; 
+    const completedDate = new Date(); 
+    const completedTs = Timestamp.fromDate(completedDate); 
+    const meetingData = extractMeetingFromAppointment(appt, payload.meeting); 
+    
+    const resources = { 
+        playlists: payload?.resources?.playlists || [], 
+        exercises: payload?.resources?.exercises || [], 
+        files: payload?.resources?.files || [] 
+    }; 
+    const followUp = { 
+        tasks: payload?.followUp?.tasks || [], 
+        reminderAt: payload?.followUp?.reminderAt || null 
+    }; 
+    
+    const consultationPayload = { 
+        appointmentId, 
+        therapistId, 
+        patientId: appt.patientId, 
+        startsAt: coerceTimestamp(appt.startTime, appt.slotStartsAt) ?? appt.slotStartsAt, 
+        endsAt: coerceTimestamp(appt.endTime, appt.slotEndsAt) ?? appt.slotEndsAt, 
+        sessionStatus: "COMPLETED", 
+        meeting: meetingData, 
+        summaryNotes: payload.summaryNotes ?? "", 
+        notes: payload.summaryNotes ?? "", 
+        resources, 
+        followUp, 
+        completedAt: completedDate, 
+        createdBy: actorId, 
+        updatedBy: actorId 
+    }; 
+    
+    let consultationId = appt.historyId || null; 
+    if (consultationId) { 
+        await updateConsultation(consultationId, consultationPayload); 
+    } else { 
+        const result = await createConsultation(consultationPayload); 
+        consultationId = result?.id || null; 
+    } 
+    
+    await updateDoc(apptRef, { 
+        status: normalizeAppointmentStatus("COMPLETED"), 
+        sessionStatus: normalizeSessionStatus("COMPLETED"), 
+        completedAt: completedTs, 
+        historyId: consultationId, 
+        updatedAt: serverTimestamp() 
+    }); 
+    return { consultationId }; 
+}
+
 export async function findTherapistsWithOpenSlots() { const cg = await getDocs(collectionGroup(db, "slots")); const ids = new Set(); cg.forEach((d) => { const data = d.data(); if (["OPEN", "HELD"].includes(data?.status)) { const parts = d.ref.path.split("/"); if (parts[1]) ids.add(parts[1]); } }); return Array.from(ids); }
 function prepareJitsiMeetingFields(appointmentId, appt, options = {}) { const metadata = generateJitsiRoomMetadata({ therapistId: appt.therapistId, patientId: appt.patientId, appointmentId, startsAt: appt.startTime || appt.slotStartsAt, endsAt: appt.endTime || appt.slotEndsAt, domain: options.domain, ttlMinutes: options.ttlMinutes }); return { meetingProvider: metadata.provider, meetingRoom: metadata.roomName, meetingUrl: metadata.joinUrl, meetingConfig: metadata.config, meetingExpiresAt: metadata.expiresAt }; }
 function extractMeetingFromAppointment(appt = {}, override = {}) { const source = { ...(appt || {}) }; const applied = { ...(override || {}) }; return { provider: applied.provider ?? source.meetingProvider ?? (source.meetingUrl ? "jitsi" : null), roomName: applied.roomName ?? source.meetingRoom ?? null, joinUrl: applied.joinUrl ?? source.meetingUrl ?? null, expiresAt: applied.expiresAt ?? source.meetingExpiresAt ?? null, config: applied.config ?? source.meetingConfig ?? null }; }

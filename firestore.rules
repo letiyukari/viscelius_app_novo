@@ -94,7 +94,6 @@ service cloud.firestore {
     match /appointments/{appointmentId} {
       allow read: if isAppointmentParticipant();
       allow create: if isAppointmentParticipantFromRequest();
-      
       allow update: if isAppointmentParticipant() && (
         isAppointmentTherapist() ||
         (
@@ -103,6 +102,7 @@ service cloud.firestore {
             // Permite cancelar livremente
             request.resource.data.status == 'canceled' ||
             // Outros updates restritos
+           
             (
               appointmentHistoryFieldsUnchanged() &&
               appointmentStatusUnchanged() &&
@@ -111,7 +111,6 @@ service cloud.firestore {
           )
         )
       );
-      
       allow delete: if isAppointmentParticipant();
     }
 
@@ -121,7 +120,12 @@ service cloud.firestore {
         request.auth.uid == resource.data.patientId ||
         request.auth.uid == resource.data.therapistId
       );
-      allow create, update, delete: if isAuthenticated() && request.auth.uid == resource.data.therapistId;
+      
+      // Regra de criação: verifica o payload de entrada (request.resource)
+      allow create: if isAuthenticated() && request.auth.uid == request.resource.data.therapistId;
+      
+      // Regras de alteração/exclusão: verifica o documento existente (resource.data)
+      allow update, delete: if isAuthenticated() && request.auth.uid == resource.data.therapistId;
     }
 
     // --- Playlists ---
@@ -129,26 +133,22 @@ service cloud.firestore {
       allow read: if isAuthenticated() && 
                    (resource.data.therapistUid == request.auth.uid || 
                     resource.data.patientUid == request.auth.uid);
-
       allow create: if isAuthenticated()
         && request.resource.data.therapistUid == request.auth.uid;
-
       allow update, delete: if isAuthenticated() && resource.data.therapistUid == request.auth.uid;
 
       match /content/{contentId} {
         allow read: if isAuthenticated() &&
                      (get(/databases/$(database)/documents/playlists/$(playlistId)).data.therapistUid == request.auth.uid ||
                       get(/databases/$(database)/documents/playlists/$(playlistId)).data.patientUid == request.auth.uid);
-        
         allow write: if isAuthenticated()
           && get(/databases/$(database)/documents/playlists/$(playlistId)).data.therapistUid == request.auth.uid;
       }
     }
 
-    // --- Usuários (CORREÇÃO AQUI) ---
+    // --- Usuários ---
     match /users/{userId} {
       allow read: if isAuthenticated();
-      
       allow update: if isAuthenticated() && (
         // O próprio usuário pode editar tudo
         request.auth.uid == userId || 
@@ -156,7 +156,6 @@ service cloud.firestore {
         // O TERAPEUTA pode editar SE estiver se vinculando como terapeuta desse paciente
         (resource.data.role == 'patient' && request.resource.data.therapistUid == request.auth.uid)
       );
-
       // Criação/Deleção restrita ao próprio usuário (ou admin, se houver)
       allow create, delete: if isAuthenticated() && request.auth.uid == userId;
     }

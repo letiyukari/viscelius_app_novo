@@ -1,5 +1,4 @@
 ﻿// src/screens/patient/AgendaPage.js
-// ... (mesmos imports e helpers de antes) ...
 import React, { useEffect, useMemo, useState } from "react";
 import { collectionGroup, getDocs } from "firebase/firestore";
 import { db } from "../../firebase";
@@ -17,7 +16,6 @@ import {
 } from "../../services/usersService";
 import "./AgendaPage.css";
 
-// ... (Helpers de data, status e badge mantidos iguais) ...
 const fmtDateWithWeekday = (iso) => { try { const date = new Date(iso); const datePart = date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }); const weekday = date.toLocaleDateString("pt-BR", { weekday: "long" }); return `${datePart} (${weekday})`; } catch (error) { return iso; } };
 const fmtDate = (iso) => { try { return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }); } catch (error) { return iso; } };
 const fmtTime = (iso) => { try { return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch (error) { return iso; } };
@@ -25,16 +23,37 @@ const fmtDuration = (startIso, endIso) => { const start = new Date(startIso); co
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const rangeDays = (n = 30) => { const out = []; const base = new Date(); for (let i = 0; i < n; i += 1) { const d = new Date(base); d.setDate(d.getDate() + i); out.push(d); } return out; };
 const extractSpecialties = (profile = {}) => { if (Array.isArray(profile.specialties)) { return profile.specialties.map((value) => (value == null ? "" : String(value).trim())).filter(Boolean); } if (profile.specialty) return [String(profile.specialty).trim()].filter(Boolean); if (profile.specialtyText) return String(profile.specialtyText).split(",").map((value) => value.trim()).filter(Boolean); return []; };
+
+// ALTERADO: "Disponível" em vez de "Aberto"
 const slotStatusText = { OPEN: "Disponível", HELD: "Reservado", BOOKED: "Ocupado" };
-const appointmentStatusLabels = { pending: "Pendente", confirmed: "Confirmado", declined: "Recusado", canceled: "Cancelado" };
+
+const appointmentStatusLabels = { 
+  pending: "Pendente", 
+  confirmed: "Confirmado", 
+  declined: "Recusado", 
+  canceled: "Cancelado", 
+  // ALTERADO: "Finalizado" (Masculino)
+  completed: "Finalizado"
+};
+
 const normalizeStatus = (status) => String(status || "").toLowerCase();
+
 const slotBadgeClass = (status) => { switch (status) { case "OPEN": return "tw-badge tw-badge-available"; case "HELD": return "tw-badge tw-badge-held"; case "BOOKED": return "tw-badge tw-badge-booked"; default: return "tw-badge tw-badge-muted"; } };
-const appointmentBadgeClass = (status) => { switch (normalizeStatus(status)) { case "pending": return "tw-badge tw-badge-pending"; case "confirmed": return "tw-badge tw-badge-confirmed"; case "canceled": return "tw-badge tw-badge-canceled"; default: return "tw-badge tw-badge-muted"; } };
+
+const appointmentBadgeClass = (status) => {
+  switch (normalizeStatus(status)) {
+    case "pending": return "tw-badge tw-badge-pending";
+    case "confirmed": return "tw-badge tw-badge-confirmed";
+    case "canceled": return "tw-badge tw-badge-canceled";
+    // MANTIDO: Verde (mesma classe de confirmado) para finalizado
+    case "completed": return "tw-badge tw-badge-confirmed"; 
+    default: return "tw-badge tw-badge-muted";
+  }
+};
 
 export default function AgendaPage({ user }) {
   const patientId = user?.uid || user?.id || user?.userId || null;
 
-  // Dias a exibir (30 dias a partir de hoje)
   const days = useMemo(() => rangeDays(30), []);
   const pageSize = 7;
   const [weekIndex, setWeekIndex] = useState(0);
@@ -103,15 +122,19 @@ export default function AgendaPage({ user }) {
 
   const appointmentsBySlot = useMemo(() => {
     const map = {};
-    appointments.forEach((appt) => { const parts = (appt.slotPath || "").split("/"); if (parts[3]) map[parts[3]] = appt; });
+    appointments.forEach((appt) => {
+        if (appt.slotPath) {
+            const parts = appt.slotPath.split("/");
+            const slotId = parts[parts.length - 1];
+            if (slotId) map[slotId] = appt;
+        }
+    });
     return map;
   }, [appointments]);
 
-  // --- AGRUPAR SLOTS E FILTRAR PASSADO ---
   const slotsByDay = useMemo(() => {
     const grouped = {};
     const now = new Date();
-    // Reset hora para comparar apenas datas (ontem, hoje, amanhã)
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const todayStr = ymd(now);
 
@@ -120,14 +143,10 @@ export default function AgendaPage({ user }) {
       const slotDate = new Date(slot.startsAt);
       const slotDayStr = ymd(slotDate);
       
-      // 1. Se o dia do slot for ANTERIOR a hoje (meia-noite), ignora completamente
       if (new Date(slotDate.getFullYear(), slotDate.getMonth(), slotDate.getDate()) < todayStart) {
           return;
       }
 
-      // 2. Se for HOJE, verifica se a hora já passou.
-      // Se for OPEN e já passou, ignora.
-      // Se estiver ocupado/reservado, mostra (histórico do dia).
       if (slotDayStr === todayStr) {
           if (slot.status === "OPEN" && slotDate < now) {
               return; 
@@ -165,6 +184,7 @@ export default function AgendaPage({ user }) {
 
   const selectedLabel = selectedTherapist ? resolveTherapistLabel({ uid: selectedTherapist.id, profile: selectedTherapist }) : null;
   const currentSlots = slotsByDay[activeDay] || [];
+  
   const validAppointments = appointments.filter(appt => { const st = normalizeStatus(appt.status); return st !== 'canceled' && st !== 'declined'; });
 
   return (
@@ -222,14 +242,14 @@ export default function AgendaPage({ user }) {
                       {currentSlots.map(slot => {
                         const appt = appointmentsBySlot[slot.id];
                         const myStatus = normalizeStatus(appt?.status);
-                        const isMyActiveAppt = myStatus === 'pending' || myStatus === 'confirmed';
+                        const isMyActiveAppt = myStatus === 'pending' || myStatus === 'confirmed' || myStatus === 'completed';
                         const requesting = requestingSlotId === slot.id;
                         const canceling = appt && cancelingId === appt.id;
                         
-                        // Bloqueio visual
                         const now = new Date();
                         const slotStart = new Date(slot.startsAt);
                         const isPast = slotStart < now;
+                        
                         const isBlocked = (slot.status !== "OPEN" && !isMyActiveAppt) || (isPast && !isMyActiveAppt);
 
                         return (
@@ -244,7 +264,12 @@ export default function AgendaPage({ user }) {
                             </td>
                             <td className="tw-text-right">
                               {isMyActiveAppt ? (
-                                <button className="tw-btn tw-btn-danger" onClick={() => onCancel(appt.id)} disabled={canceling}>{canceling ? "Cancelando..." : "Cancelar"}</button>
+                                myStatus === 'completed' ? (
+                                    // ALTERADO: Texto verde para "Finalizado"
+                                    <span className="tw-text-xs tw-font-semibold tw-text-green-600">{appointmentStatusLabels[myStatus]}</span>
+                                ) : (
+                                    <button className="tw-btn tw-btn-danger" onClick={() => onCancel(appt.id)} disabled={canceling}>{canceling ? "Cancelando..." : "Cancelar"}</button>
+                                )
                               ) : isBlocked ? (
                                 <span className="tw-text-xs tw-font-semibold tw-text-slate-400">{isPast ? "Expirado" : "Ocupado"}</span>
                               ) : (
@@ -267,15 +292,37 @@ export default function AgendaPage({ user }) {
                   validAppointments.slice().sort((a, b) => new Date(a.slotStartsAt) - new Date(b.slotStartsAt)).map(appt => {
                     const tLabel = resolveTherapistLabel({ uid: appt.therapistId, profile: profiles[appt.therapistId] });
                     const st = normalizeStatus(appt.status);
+                    const hasLink = !!appt.meetingUrl;
+                    const hasNotes = !!appt.summaryNotes;
+
                     return (
-                      <div key={appt.id} className="tw-flex tw-justify-between tw-items-center tw-gap-3">
-                        <div className="tw-flex tw-flex-col">
-                          <span className="tw-text-sm tw-font-semibold">{fmtDateWithWeekday(appt.slotStartsAt)} • {fmtTime(appt.slotStartsAt)}</span>
-                          <span className="tw-text-xs text-slate-500">Musicoterapeuta: {tLabel.name}</span>
-                          <span className={appointmentBadgeClass(st)}>{appointmentStatusLabels[st]}</span>
+                      <div key={appt.id} className="tw-flex tw-flex-col tw-gap-3 tw-p-4 tw-border tw-border-slate-200 tw-rounded-xl tw-bg-white">
+                        <div className="tw-flex tw-justify-between tw-items-center">
+                            <div className="tw-flex tw-flex-col">
+                              <span className="tw-text-sm tw-font-semibold">{fmtDateWithWeekday(appt.slotStartsAt)} • {fmtTime(appt.slotStartsAt)}</span>
+                              <span className="tw-text-xs text-slate-500">Musicoterapeuta: {tLabel.name}</span>
+                              <span className={appointmentBadgeClass(st)}>{appointmentStatusLabels[st]}</span>
+                            </div>
+                            {(st === "pending" || st === "confirmed") && (
+                              <button className="tw-btn tw-btn-danger" onClick={() => onCancel(appt.id)} disabled={cancelingId === appt.id}>Cancelar</button>
+                            )}
                         </div>
-                        {(st === "pending" || st === "confirmed") && (
-                          <button className="tw-btn tw-btn-danger" onClick={() => onCancel(appt.id)} disabled={cancelingId === appt.id}>Cancelar</button>
+                        
+                        {(hasLink || hasNotes) && (
+                            <div className="tw-mt-2 tw-pt-3 tw-border-t tw-border-slate-100 tw-text-sm">
+                                {hasLink && (
+                                    <div className="tw-mb-2">
+                                        <span className="tw-font-semibold tw-text-slate-700">Link da sala: </span>
+                                        <a href={appt.meetingUrl} target="_blank" rel="noopener noreferrer" className="tw-text-blue-600 tw-underline">{appt.meetingUrl}</a>
+                                    </div>
+                                )}
+                                {hasNotes && (
+                                    <div>
+                                        <span className="tw-font-semibold tw-text-slate-700">Observações: </span>
+                                        <span className="tw-text-slate-600">{appt.summaryNotes}</span>
+                                    </div>
+                                )}
+                            </div>
                         )}
                       </div>
                     );

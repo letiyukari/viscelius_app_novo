@@ -12,10 +12,11 @@ import { subscribePatientConsultations } from "../../services/consultations";
 import { getMultipleUserProfiles, resolveTherapistLabel } from "../../services/usersService";
 
 const sessionStatusMeta = {
-  completed: { label: "Realizada", background: "#E8F5E9", color: "#2E7D32" },
-  scheduled: { label: "Agendada", background: "#DBEAFE", color: "#1D4ED8" },
+  // Mantido "Finalizado" (Masculino)
+  completed: { label: "Finalizado", background: "#E8F5E9", color: "#2E7D32" },
+  scheduled: { label: "Agendado", background: "#DBEAFE", color: "#1D4ED8" },
   in_progress: { label: "Em andamento", background: "#FEF3C7", color: "#B45309" },
-  canceled: { label: "Cancelada", background: "#FEE2E2", color: "#B91C1C" },
+  canceled: { label: "Cancelado", background: "#FEE2E2", color: "#B91C1C" },
 };
 
 const emptyStatusMeta = { label: "Sem status", background: "#E5E7EB", color: "#374151" };
@@ -683,9 +684,3 @@ const styles = {
 };
 
 export default HistoricoPage;
-
-
-
-
-
-
