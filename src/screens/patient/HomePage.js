@@ -6,9 +6,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import Icons from '../../components/common/Icons';
 import NextSessionCard from '../../components/patient/NextSessionCard';
 import AppointmentDetailModal from '../../components/patient/AppointmentDetailModal';
-// CORREÇÃO: A linha abaixo está a causar um erro de "Module not found".
-// Vamos comentá-la para que o projeto possa compilar.
-// import BreathingExercise from '../../components/wellness/BreathingExercise';
+import BreathingExercise from '../../components/therapists/wellness/BreathingExercise';
 
 function niceNameFromEmail(email) {
   if (!email) return '';
@@ -219,9 +217,7 @@ const HomePage = ({ user }) => {
               Fechar
             </button>
           </div>
-          {/* CORREÇÃO: O componente BreathingExercise foi comentado para corrigir o erro de compilação. */}
-          {/* <BreathingExercise /> */}
-          <p>O exercício de respiração está temporariamente desativado.</p>
+          <BreathingExercise />
         </section>
       )}
 
