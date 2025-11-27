@@ -1,7 +1,8 @@
 // src/firebase.js
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
-import { getAuth, setPersistence, browserLocalPersistence } from "firebase/auth";
+// Alterado: Importamos browserSessionPersistence em vez de browserLocalPersistence
+import { getAuth, setPersistence, browserSessionPersistence } from "firebase/auth";
 import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
 
 // As suas credenciais de configuração do Firebase
@@ -31,8 +32,8 @@ try {
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Ativar persistência do Auth (local) para manter sessão entre reloads
-setPersistence(auth, browserLocalPersistence).catch((err) => {
+// Alterado: Ativar persistência de SESSÃO (por aba) para permitir múltiplas contas
+setPersistence(auth, browserSessionPersistence).catch((err) => {
   console.warn('Não foi possível definir persistência do Auth:', err && err.message ? err.message : err);
 });
 
