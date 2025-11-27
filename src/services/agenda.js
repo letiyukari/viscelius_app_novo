@@ -258,8 +258,9 @@ export async function completeAppointment(appointmentId, payload = {}) {
     if (consultationId) { 
         await updateConsultation(consultationId, consultationPayload); 
     } else { 
-        const result = await createConsultation(consultationPayload); 
-        consultationId = result?.id || null; 
+        // CORREÇÃO AQUI: createConsultation retorna uma STRING (o ID), não um objeto.
+        const resultId = await createConsultation(consultationPayload); 
+        consultationId = resultId; 
     } 
     
     await updateDoc(apptRef, { 
@@ -267,6 +268,9 @@ export async function completeAppointment(appointmentId, payload = {}) {
         sessionStatus: normalizeSessionStatus("COMPLETED"), 
         completedAt: completedTs, 
         historyId: consultationId, 
+        // CORREÇÃO: Atualizando as observações no agendamento para o paciente ver
+        summaryNotes: payload.summaryNotes ?? "", 
+        notes: payload.summaryNotes ?? "",
         updatedAt: serverTimestamp() 
     }); 
     return { consultationId }; 

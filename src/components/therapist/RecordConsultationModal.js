@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { getConsultation } from "../../services/consultations";
-import { ClockIcon, VideoIcon } from "../../common/Icons";
+import { getConsultation, updateConsultation } from "../../services/consultations";
+import { db } from "../../firebase";
+import { doc, getDoc } from "firebase/firestore";
+import { ClockIcon } from "../../common/Icons";
 
 const dateFormatter = new Intl.DateTimeFormat("pt-BR", {
   day: "2-digit",
@@ -180,16 +182,22 @@ const styles = {
 const RecordConsultationModal = ({ open, appointment, patientName, onClose, onSave }) => {
   const [summaryNotes, setSummaryNotes] = useState("");
   const [meetingUrlInput, setMeetingUrlInput] = useState("");
-  const [isFinalizing, setIsFinalizing] = useState(false); // Toggle para finalizar ou apenas salvar
+  const [isFinalizing, setIsFinalizing] = useState(false);
   
   const [loading, setLoading] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Estado local para buscar o agendamento mais recente e garantir que temos o ID do histórico
+  const [freshAppointment, setFreshAppointment] = useState(null);
+  const [existingHistoryId, setExistingHistoryId] = useState(null);
+
+  const activeAppointment = freshAppointment || appointment;
 
   const sessionRange = useMemo(() => {
-    if (!appointment) return "--";
-    return formatRange(appointment.slotStartsAt || appointment.startTime, appointment.slotEndsAt || appointment.endTime);
-  }, [appointment]);
+    if (!activeAppointment) return "--";
+    return formatRange(activeAppointment.slotStartsAt || activeAppointment.startTime, activeAppointment.slotEndsAt || activeAppointment.endTime);
+  }, [activeAppointment]);
 
   const resetForm = () => {
     setSummaryNotes("");
@@ -197,38 +205,58 @@ const RecordConsultationModal = ({ open, appointment, patientName, onClose, onSa
     setIsFinalizing(false);
     setSubmitError(null);
     setIsSubmitting(false);
+    setFreshAppointment(null);
+    setExistingHistoryId(null);
   };
 
   useEffect(() => {
     if (!open || !appointment) {
       resetForm();
-      setLoading(false);
       return;
     }
     
     resetForm();
-    
-    // Preencher com dados existentes do agendamento
-    setSummaryNotes(appointment.summaryNotes || appointment.notes || "");
-    setMeetingUrlInput(appointment.meetingUrl || appointment.meeting?.joinUrl || "");
+    setLoading(true);
 
-    // Se tiver histórico, buscar mais detalhes
-    const historyId = appointment.historyId;
-    if (historyId) {
-      setLoading(true);
-      getConsultation(historyId)
-        .then((consultation) => {
-          if (consultation) {
-            setSummaryNotes(prev => prev || consultation.summaryNotes || "");
-          }
-        })
-        .catch((error) => {
-          console.error("RecordConsultationModal getConsultation", error);
-        })
-        .finally(() => {
-          setLoading(false);
-        });
-    }
+    // 1. Busca os dados mais recentes do agendamento no Firebase
+    const fetchFreshData = async () => {
+        try {
+            const apptDocRef = doc(db, "appointments", appointment.id);
+            const apptSnap = await getDoc(apptDocRef);
+            
+            let currentAppt = appointment;
+            let historyId = appointment.historyId;
+
+            if (apptSnap.exists()) {
+                const data = apptSnap.data();
+                currentAppt = { id: apptSnap.id, ...data };
+                historyId = data.historyId; 
+                setFreshAppointment(currentAppt);
+            }
+
+            // Preenche campos do formulário
+            setSummaryNotes(currentAppt.summaryNotes || currentAppt.notes || "");
+            setMeetingUrlInput(currentAppt.meetingUrl || currentAppt.meeting?.joinUrl || "");
+
+            // 2. Se já tem histórico (edição), busca os dados da consulta
+            if (historyId) {
+                setExistingHistoryId(historyId);
+                const consultation = await getConsultation(historyId);
+                if (consultation) {
+                    setSummaryNotes(prev => prev || consultation.summaryNotes || "");
+                    if (currentAppt.status === 'completed') {
+                         setIsFinalizing(true);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error("Erro ao carregar dados frescos:", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    fetchFreshData();
   }, [open, appointment]);
 
   if (!open || !appointment) {
@@ -243,20 +271,43 @@ const RecordConsultationModal = ({ open, appointment, patientName, onClose, onSa
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (!onSave) return;
     setSubmitError(null);
     setIsSubmitting(true);
+    
     try {
-      // Payload com os dados editados
       const payload = {
         summaryNotes: summaryNotes.trim(),
         meetingUrl: meetingUrlInput.trim(),
-        isFinalizing: isFinalizing, // Flag para o pai saber se deve completar ou só atualizar
-        // Arrays vazios para compatibilidade se for finalizar
+        isFinalizing: isFinalizing, 
         resources: { playlists: [], exercises: [], files: [] },
         followUp: { tasks: [], reminderAt: null },
       };
-      await onSave(payload);
+
+      // Se já existe um histórico vinculado, atualizamos diretamente
+      if (existingHistoryId) {
+        await updateConsultation(existingHistoryId, {
+            summaryNotes: payload.summaryNotes,
+            meetingUrl: payload.meetingUrl,
+        });
+        
+        // Também precisamos atualizar o agendamento para o paciente ver as notas
+        // Isso é opcional se a função onSave já fizesse isso, mas para garantir:
+        if (onSave) {
+             // Chamamos onSave apenas para atualizar o status/notas no agendamento se necessário,
+             // ou podemos confiar que o updateConsultation foi suficiente para o histórico.
+             // Para atualizar as notas do AGENDAMENTO (visível pro paciente), chamamos o onSave.
+             await onSave(payload);
+        } else {
+             if (onClose) onClose();
+        }
+        
+      } else {
+        // Se NÃO existe histórico, chamamos o onSave normal para criar e vincular
+        if (onSave) {
+            await onSave(payload);
+        }
+      }
+
     } catch (error) {
       console.error("RecordConsultationModal submit", error);
       setSubmitError(error?.message || "Não foi possível salvar.");
@@ -281,7 +332,7 @@ const RecordConsultationModal = ({ open, appointment, patientName, onClose, onSa
         </div>
 
         {loading ? (
-          <div style={styles.loadingBox}>Carregando informações...</div>
+          <div style={styles.loadingBox}>Carregando informações atualizadas...</div>
         ) : (
           <form style={{ display: "contents" }} onSubmit={handleSubmit}>
             <div style={styles.body}>
@@ -321,7 +372,6 @@ const RecordConsultationModal = ({ open, appointment, patientName, onClose, onSa
                 />
               </section>
 
-              {/* Checkbox para decidir se finaliza ou não */}
               <div style={styles.checkboxContainer}>
                 <input
                   type="checkbox"
