@@ -1,8 +1,8 @@
 // src/screens/patient/PlaylistsPage.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../../firebase';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
-import { PlayIcon, PauseIcon } from '../../common/Icons'; 
+import { collection, onSnapshot, query, where, doc, getDoc } from 'firebase/firestore';
+import { PlayIcon, PauseIcon, UserIcon, MusicIcon } from '../../common/Icons'; 
 import { usePlayer, sanitizeTrack } from '../../context/PlayerContext';
 import PatientPlaylistContentModal from '../../components/patient/PlaylistContentModal';
 import { useAuth } from '../../context/AuthContext';
@@ -12,11 +12,14 @@ const PlaylistsPage = () => {
     const { user } = useAuth();
     
     const [firestorePlaylists, setFirestorePlaylists] = useState([]);
+    const [therapists, setTherapists] = useState({}); // Cache de terapeutas: { uid: { name, photoURL } }
     const [loading, setLoading] = useState(true);
     const [message, setMessage] = useState({ type: '', text: '' });
     const [showSongsModal, setShowSongsModal] = useState(false);
     const [selectedPlaylist, setSelectedPlaylist] = useState(null);
+    const [hoveredCardId, setHoveredCardId] = useState(null);
 
+    // 1. Carrega Playlists
     useEffect(() => {
         if (!user || !user.uid) { setLoading(false); return; }
         setLoading(true);
@@ -33,6 +36,41 @@ const PlaylistsPage = () => {
         });
         return () => unsubscribe();
     }, [user]);
+
+    // 2. Carrega dados dos Terapeutas das playlists
+    useEffect(() => {
+        const fetchTherapists = async () => {
+            const uniqueTherapistIds = [...new Set(firestorePlaylists.map(p => p.therapistUid).filter(Boolean))];
+            const newTherapists = { ...therapists };
+            let changed = false;
+
+            for (const uid of uniqueTherapistIds) {
+                if (!newTherapists[uid]) {
+                    try {
+                        const docSnap = await getDoc(doc(db, 'users', uid));
+                        if (docSnap.exists()) {
+                            const data = docSnap.data();
+                            newTherapists[uid] = {
+                                name: data.displayName || data.name || 'Musicoterapeuta',
+                                photoURL: data.photoURL || null
+                            };
+                            changed = true;
+                        }
+                    } catch (e) {
+                        console.error("Erro ao carregar terapeuta:", e);
+                    }
+                }
+            }
+
+            if (changed) {
+                setTherapists(newTherapists);
+            }
+        };
+
+        if (firestorePlaylists.length > 0) {
+            fetchTherapists();
+        }
+    }, [firestorePlaylists]);
 
     const buildQueue = (tracks = [], fallbackImage) =>
         tracks.map((item) => sanitizeTrack({ ...item, image: item.image || fallbackImage })).filter(Boolean);
@@ -57,21 +95,35 @@ const PlaylistsPage = () => {
     const openSongsModal = (playlist) => { setSelectedPlaylist(playlist); setShowSongsModal(true); };
     const closeSongsModal = () => { setShowSongsModal(false); setSelectedPlaylist(null); };
     
+    const handleCardHover = (e, enter, playlistId) => {
+        setHoveredCardId(enter ? playlistId : null);
+        if (enter) {
+          e.currentTarget.style.transform = 'translateY(-4px)';
+          e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)';
+        } else {
+          e.currentTarget.style.transform = 'translateY(0)';
+          e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1)';
+        }
+    };
+
     const PlaylistCard = ({ item, onPlay, isPlayingNow, isDynamic = false, onViewSongs }) => {
-        const [isHovered, setIsHovered] = useState(false);
+        const isHovered = hoveredCardId === item.id;
+        const therapist = item.therapistUid ? therapists[item.therapistUid] : null;
+
         const styles = {
             card: { 
                 backgroundColor: '#FFFFFF', 
                 borderRadius: '16px', 
-                padding: '1.25rem', 
+                border: '1px solid #E5E7EB',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                padding: '1rem', 
                 cursor: 'pointer', 
                 transition: 'transform 0.2s, box-shadow 0.2s', 
                 position: 'relative', 
-                width: '200px', 
+                width: '220px', 
                 flexShrink: 0,
-                border: '1px solid #E5E7EB',
-                boxShadow: isHovered ? '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)' : '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1)',
-                transform: isHovered ? 'translateY(-4px)' : 'translateY(0)'
+                display: 'flex',
+                flexDirection: 'column'
             },
             cardImage: { 
                 width: '100%', 
@@ -81,28 +133,38 @@ const PlaylistsPage = () => {
                 marginBottom: '1rem',
                 backgroundColor: '#F3F4F6'
             },
+            cardContent: { display: 'flex', flexDirection: 'column', gap: '0.5rem', flexGrow: 1 },
             cardTitle: { 
-                color: '#1F2937', 
-                fontWeight: '700', 
-                fontSize: '1.1rem',
-                margin: '0 0 0.25rem 0', 
-                whiteSpace: 'nowrap', 
-                overflow: 'hidden', 
-                textOverflow: 'ellipsis' 
+                color: '#1F2937', fontWeight: '700', fontSize: '1.1rem', margin: 0, 
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' 
             },
             cardDesc: { 
-                color: '#6B7280', 
-                fontSize: '0.9rem', 
-                margin: 0,
-                display: '-webkit-box',
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: 'vertical',
-                overflow: 'hidden'
+                color: '#6B7280', fontSize: '0.9rem', margin: 0,
+                display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' 
+            },
+            // Estilo do crachá do terapeuta
+            therapistBadge: {
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '0.75rem',
+                color: '#4B5563',
+                backgroundColor: '#F3F4F6',
+                padding: '4px 8px',
+                borderRadius: '20px',
+                marginTop: 'auto', // Empurra para o final se houver espaço
+                alignSelf: 'flex-start'
+            },
+            therapistAvatar: {
+                width: '16px',
+                height: '16px',
+                borderRadius: '50%',
+                objectFit: 'cover'
             },
             playButton: { 
                 position: 'absolute', 
-                bottom: '90px', 
-                right: '25px', 
+                bottom: '100px', // Ajustado para não ficar em cima do texto
+                right: '20px', 
                 backgroundColor: '#8B5CF6', 
                 color: '#fff', 
                 border: 'none', 
@@ -118,16 +180,40 @@ const PlaylistsPage = () => {
                 transform: (isHovered || isPlayingNow) ? 'scale(1)' : 'scale(0.8)' 
             },
         };
+
         return (
-            <div style={styles.card} onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)} onClick={isDynamic ? () => onViewSongs(item) : undefined}>
+            <div 
+                style={styles.card} 
+                onMouseEnter={(e) => handleCardHover(e, true, item.id)} 
+                onMouseLeave={(e) => handleCardHover(e, false, item.id)} 
+                onClick={isDynamic ? () => onViewSongs(item) : undefined}
+            >
                 <img src={item.image} alt={item.name} style={styles.cardImage} />
-                <h4 style={styles.cardTitle}>{item.name}</h4>
-                <p style={styles.cardDesc}>{item.desc || 'Sem descrição'}</p>
+                
                 {!isDynamic && (
                     <button style={styles.playButton} onClick={(e) => { e.stopPropagation(); onPlay(item); }}>
                         {isPlayingNow ? <PauseIcon /> : <PlayIcon />}
                     </button>
                 )}
+
+                <div style={styles.cardContent}>
+                    {/* Crachá do Terapeuta */}
+                    {isDynamic && therapist && (
+                        <div style={styles.therapistBadge}>
+                            {therapist.photoURL ? (
+                                <img src={therapist.photoURL} alt={therapist.name} style={styles.therapistAvatar} />
+                            ) : (
+                                <UserIcon style={{ width: 14, height: 14, color: '#6B7280' }} />
+                            )}
+                            <span style={{maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+                                {therapist.name}
+                            </span>
+                        </div>
+                    )}
+
+                    <h4 style={styles.cardTitle}>{item.name}</h4>
+                    <p style={styles.cardDesc}>{item.desc || 'Sem descrição'}</p>
+                </div>
             </div>
         );
     };
@@ -138,7 +224,7 @@ const PlaylistsPage = () => {
             {isLoading ? (
                 <div style={{display: 'flex', gap: '1rem'}}>
                     {[1,2,3].map(i => (
-                        <div key={i} style={{width: 200, height: 280, background: '#E5E7EB', borderRadius: 16, animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'}}></div>
+                        <div key={i} style={{width: 220, height: 300, background: '#E5E7EB', borderRadius: 16, animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'}}></div>
                     ))}
                 </div>
             ) : data.length === 0 ? (
@@ -160,7 +246,7 @@ const PlaylistsPage = () => {
     const styles = {
         pageContainer: { 
             padding: '2rem 3.5rem', 
-            backgroundColor: '#F9FAFB', // Cor de fundo clara
+            backgroundColor: '#F9FAFB', 
             color: '#1F2937', 
             fontFamily: '"Inter", sans-serif', 
             overflowY: 'auto', 

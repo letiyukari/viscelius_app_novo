@@ -20,14 +20,15 @@ import { db } from "../firebase";
 import { createConsultation, updateConsultation } from "./consultations";
 import { generateJitsiRoomMetadata } from "./jitsiService";
 
-// ... (Helpers toIso, docFromPath, etc... mantidos) ...
+// Helpers
 function toIso(v) { if (!v) return null; if (typeof v === "string") return new Date(v).toISOString(); if (v instanceof Date) return v.toISOString(); throw new Error("Data inválida"); }
 function docFromPath(path) { return doc(db, path); }
 function normalizeAppointmentStatus(raw) { const value = String(raw || "").toLowerCase(); return ["pending", "confirmed", "canceled", "declined", "completed"].includes(value) ? value : "pending"; }
 function normalizeSessionStatus(raw) { const value = String(raw || "").toLowerCase(); return ["scheduled", "in_progress", "completed", "canceled"].includes(value) ? value : "scheduled"; }
 function coerceTimestamp(value, fallbackIso) { if (value && typeof value.toDate === "function") return value; const source = value ?? fallbackIso; if (!source) return undefined; const date = source instanceof Date ? source : typeof source === "string" ? new Date(source) : null; if (!date || Number.isNaN(date.getTime())) return undefined; return Timestamp.fromDate(date); }
 
-// ... (Slots functions mantidas) ...
+// --- SLOTS ---
+
 export async function publishSlots(therapistId, slots) {
   if (!therapistId) throw new Error("therapistId é obrigatório");
   const base = collection(db, "therapists", therapistId, "slots");
@@ -65,7 +66,7 @@ export async function deleteSlot(therapistId, slotId) {
   const snap = await getDoc(slotRef);
   if (!snap.exists()) throw new Error("Slot não encontrado");
   const slot = snap.data();
-  if (slot.status !== "OPEN") { throw new Error("Só é possível excluir horários com status ABERTO."); }
+  if (slot.status !== "OPEN") throw new Error("Só é possível excluir horários com status ABERTO.");
   await deleteDoc(slotRef);
 }
 
@@ -81,11 +82,10 @@ export async function requestAppointment({ patientId, therapistId, slotId }) {
   
   if (slot.status !== "OPEN") throw new Error("Slot não está disponível");
 
-  // VALIDAÇÃO DE PASSADO (BACKEND GUARD)
   const slotDate = new Date(slot.startsAt);
   const now = new Date();
-  if (slotDate < now) {
-      throw new Error("Não é possível agendar horários que já passaram.");
+  if (slotDate.getTime() < (now.getTime() - 60000)) {
+      throw new Error("Este horário já expirou. Por favor, atualize a página e escolha um horário futuro.");
   }
 
   // 1. Reserva o Slot
@@ -106,12 +106,6 @@ export async function requestAppointment({ patientId, therapistId, slotId }) {
     updatedAt: serverTimestamp(),
   });
 
-  // 3. Vincula paciente
-  try {
-      const userRef = doc(db, 'users', patientId);
-      await updateDoc(userRef, { therapistUid: therapistId, updatedAt: serverTimestamp() });
-  } catch (err) { console.warn("Falha ao vincular paciente:", err); }
-
   return { id: apptRef.id };
 }
 
@@ -120,10 +114,33 @@ export async function approveAppointment(appointmentId) {
   const apptSnap = await getDoc(apptRef);
   if (!apptSnap.exists()) throw new Error("Agendamento não encontrado");
   const appt = apptSnap.data();
+  
   const meetingFields = prepareJitsiMeetingFields(appointmentId, appt);
-  await updateDoc(apptRef, { status: normalizeAppointmentStatus("CONFIRMED"), sessionStatus: normalizeSessionStatus(appt.sessionStatus || "SCHEDULED"), ...meetingFields, updatedAt: serverTimestamp() });
+
+  // 1. Atualiza Agendamento
+  await updateDoc(apptRef, { 
+      status: normalizeAppointmentStatus("CONFIRMED"), 
+      sessionStatus: normalizeSessionStatus(appt.sessionStatus || "SCHEDULED"), 
+      ...meetingFields, 
+      updatedAt: serverTimestamp() 
+  });
+
+  // 2. Atualiza Slot
   const slotRef = docFromPath(appt.slotPath);
   await updateDoc(slotRef, { status: "BOOKED", updatedAt: serverTimestamp() });
+
+  // 3. VINCULA PACIENTE (Com a permissão nova no firestore.rules, isso agora funciona!)
+  try {
+      if (appt.patientId && appt.therapistId) {
+          const userRef = doc(db, 'users', appt.patientId);
+          await updateDoc(userRef, {
+              therapistUid: appt.therapistId,
+              updatedAt: serverTimestamp()
+          });
+      }
+  } catch (err) {
+      console.warn("Falha ao vincular paciente na confirmação:", err);
+  }
 }
 
 export async function declineAppointment(appointmentId) {
@@ -146,35 +163,18 @@ export async function cancelAppointment(appointmentId) {
   await updateDoc(slotRef, { status: "OPEN", requestedBy: null, updatedAt: serverTimestamp() });
 }
 
-// ... (Restante mantido igual: regenerate, complete, lists...)
-export async function regenerateAppointmentMeeting(appointmentId, options = {}) {
-  const apptRef = doc(db, "appointments", appointmentId);
-  const apptSnap = await getDoc(apptRef);
-  if (!apptSnap.exists()) throw new Error("Agendamento nao encontrado");
-  const appt = apptSnap.data();
-  if (normalizeAppointmentStatus(appt.status) !== "confirmed") throw new Error("Somente consultas confirmadas podem gerar link");
-  const meetingFields = prepareJitsiMeetingFields(appointmentId, appt, options);
-  await updateDoc(apptRef, { ...meetingFields, updatedAt: serverTimestamp() });
-  return meetingFields;
+// --- LISTAGEM ---
+export function subscribeTherapistAppointments(therapistId, cb) {
+  const base = collection(db, "appointments");
+  // Removido orderBy para evitar erro de índice, garantindo que os dados cheguem
+  const qy = query(base, where("therapistId", "==", therapistId));
+  return onSnapshot(qy, (snap) => cb(snap.docs.map(mapAppointmentSnapshot)));
 }
 
-export async function completeAppointment(appointmentId, payload = {}) {
-  const apptRef = doc(db, "appointments", appointmentId);
-  const apptSnap = await getDoc(apptRef);
-  if (!apptSnap.exists()) throw new Error("Agendamento nao encontrado");
-  const appt = apptSnap.data();
-  const actorId = payload.updatedBy || appt.therapistId;
-  const therapistId = appt.therapistId || actorId;
-  const completedDate = new Date();
-  const completedTs = Timestamp.fromDate(completedDate);
-  const meetingData = extractMeetingFromAppointment(appt, payload.meeting);
-  const resources = { playlists: payload?.resources?.playlists || [], exercises: payload?.resources?.exercises || [], files: payload?.resources?.files || [] };
-  const followUp = { tasks: payload?.followUp?.tasks || [], reminderAt: payload?.followUp?.reminderAt || null };
-  const consultationPayload = { appointmentId, therapistId, patientId: appt.patientId, startsAt: coerceTimestamp(appt.startTime, appt.slotStartsAt) ?? appt.slotStartsAt, endsAt: coerceTimestamp(appt.endTime, appt.slotEndsAt) ?? appt.slotEndsAt, sessionStatus: "COMPLETED", meeting: meetingData, summaryNotes: payload.summaryNotes ?? "", resources, followUp, completedAt: completedDate, createdBy: actorId, updatedBy: actorId };
-  let consultationId = appt.historyId || null;
-  if (consultationId) { await updateConsultation(consultationId, consultationPayload); } else { const result = await createConsultation(consultationPayload); consultationId = result?.id || null; }
-  await updateDoc(apptRef, { status: normalizeAppointmentStatus("COMPLETED"), sessionStatus: normalizeSessionStatus("COMPLETED"), completedAt: completedTs, historyId: consultationId, updatedAt: serverTimestamp() });
-  return { consultationId };
+export function subscribePatientAppointments(patientId, cb) {
+  const base = collection(db, "appointments");
+  const qy = query(base, where("patientId", "==", patientId));
+  return onSnapshot(qy, (snap) => cb(snap.docs.map(mapAppointmentSnapshot)));
 }
 
 export async function listAppointmentsByUser(userId, role) {
@@ -185,37 +185,10 @@ export async function listAppointmentsByUser(userId, role) {
   return snap.docs.map(mapAppointmentSnapshot);
 }
 
-export function subscribeTherapistAppointments(therapistId, cb) {
-  const base = collection(db, "appointments");
-  const qy = query(base, where("therapistId", "==", therapistId), orderBy("createdAt", "desc"));
-  return onSnapshot(qy, (snap) => cb(snap.docs.map(mapAppointmentSnapshot)));
-}
-
-export function subscribePatientAppointments(patientId, cb) {
-  const base = collection(db, "appointments");
-  const qy = query(base, where("patientId", "==", patientId), orderBy("createdAt", "desc"));
-  return onSnapshot(qy, (snap) => cb(snap.docs.map(mapAppointmentSnapshot)));
-}
-
-export async function findTherapistsWithOpenSlots() {
-  const cg = await getDocs(collectionGroup(db, "slots"));
-  const ids = new Set();
-  cg.forEach((d) => { const data = d.data(); if (["OPEN", "HELD"].includes(data?.status)) { const parts = d.ref.path.split("/"); if (parts[1]) ids.add(parts[1]); } });
-  return Array.from(ids);
-}
-
-function prepareJitsiMeetingFields(appointmentId, appt, options = {}) {
-  const metadata = generateJitsiRoomMetadata({ therapistId: appt.therapistId, patientId: appt.patientId, appointmentId, startsAt: appt.startTime || appt.slotStartsAt, endsAt: appt.endTime || appt.slotEndsAt, domain: options.domain, ttlMinutes: options.ttlMinutes });
-  return { meetingProvider: metadata.provider, meetingRoom: metadata.roomName, meetingUrl: metadata.joinUrl, meetingConfig: metadata.config, meetingExpiresAt: metadata.expiresAt };
-}
-
-function extractMeetingFromAppointment(appt = {}, override = {}) {
-  const source = { ...(appt || {}) };
-  const applied = { ...(override || {}) };
-  return { provider: applied.provider ?? source.meetingProvider ?? (source.meetingUrl ? "jitsi" : null), roomName: applied.roomName ?? source.meetingRoom ?? null, joinUrl: applied.joinUrl ?? source.meetingUrl ?? null, expiresAt: applied.expiresAt ?? source.meetingExpiresAt ?? null, config: applied.config ?? source.meetingConfig ?? null };
-}
-
-function mapAppointmentSnapshot(docSnap) {
-  const data = docSnap.data() || {};
-  return { id: docSnap.id, ...data, status: normalizeAppointmentStatus(data.status), sessionStatus: normalizeSessionStatus(data.sessionStatus), startTime: coerceTimestamp(data.startTime, data.slotStartsAt), endTime: coerceTimestamp(data.endTime, data.slotEndsAt), meetingExpiresAt: coerceTimestamp(data.meetingExpiresAt), completedAt: coerceTimestamp(data.completedAt) };
-}
+// ... (Demais funções mantidas)
+export async function regenerateAppointmentMeeting(appointmentId, options = {}) { const apptRef = doc(db, "appointments", appointmentId); const apptSnap = await getDoc(apptRef); if (!apptSnap.exists()) throw new Error("Agendamento nao encontrado"); const appt = apptSnap.data(); if (normalizeAppointmentStatus(appt.status) !== "confirmed") throw new Error("Somente consultas confirmadas podem gerar link"); const meetingFields = prepareJitsiMeetingFields(appointmentId, appt, options); await updateDoc(apptRef, { ...meetingFields, updatedAt: serverTimestamp() }); return meetingFields; }
+export async function completeAppointment(appointmentId, payload = {}) { const apptRef = doc(db, "appointments", appointmentId); const apptSnap = await getDoc(apptRef); if (!apptSnap.exists()) throw new Error("Agendamento nao encontrado"); const appt = apptSnap.data(); const actorId = payload.updatedBy || appt.therapistId; const therapistId = appt.therapistId || actorId; const completedDate = new Date(); const completedTs = Timestamp.fromDate(completedDate); const meetingData = extractMeetingFromAppointment(appt, payload.meeting); const resources = { playlists: payload?.resources?.playlists || [], exercises: payload?.resources?.exercises || [], files: payload?.resources?.files || [] }; const followUp = { tasks: payload?.followUp?.tasks || [], reminderAt: payload?.followUp?.reminderAt || null }; const consultationPayload = { appointmentId, therapistId, patientId: appt.patientId, startsAt: coerceTimestamp(appt.startTime, appt.slotStartsAt) ?? appt.slotStartsAt, endsAt: coerceTimestamp(appt.endTime, appt.slotEndsAt) ?? appt.slotEndsAt, sessionStatus: "COMPLETED", meeting: meetingData, summaryNotes: payload.summaryNotes ?? "", resources, followUp, completedAt: completedDate, createdBy: actorId, updatedBy: actorId }; let consultationId = appt.historyId || null; if (consultationId) { await updateConsultation(consultationId, consultationPayload); } else { const result = await createConsultation(consultationPayload); consultationId = result?.id || null; } await updateDoc(apptRef, { status: normalizeAppointmentStatus("COMPLETED"), sessionStatus: normalizeSessionStatus("COMPLETED"), completedAt: completedTs, historyId: consultationId, updatedAt: serverTimestamp() }); return { consultationId }; }
+export async function findTherapistsWithOpenSlots() { const cg = await getDocs(collectionGroup(db, "slots")); const ids = new Set(); cg.forEach((d) => { const data = d.data(); if (["OPEN", "HELD"].includes(data?.status)) { const parts = d.ref.path.split("/"); if (parts[1]) ids.add(parts[1]); } }); return Array.from(ids); }
+function prepareJitsiMeetingFields(appointmentId, appt, options = {}) { const metadata = generateJitsiRoomMetadata({ therapistId: appt.therapistId, patientId: appt.patientId, appointmentId, startsAt: appt.startTime || appt.slotStartsAt, endsAt: appt.endTime || appt.slotEndsAt, domain: options.domain, ttlMinutes: options.ttlMinutes }); return { meetingProvider: metadata.provider, meetingRoom: metadata.roomName, meetingUrl: metadata.joinUrl, meetingConfig: metadata.config, meetingExpiresAt: metadata.expiresAt }; }
+function extractMeetingFromAppointment(appt = {}, override = {}) { const source = { ...(appt || {}) }; const applied = { ...(override || {}) }; return { provider: applied.provider ?? source.meetingProvider ?? (source.meetingUrl ? "jitsi" : null), roomName: applied.roomName ?? source.meetingRoom ?? null, joinUrl: applied.joinUrl ?? source.meetingUrl ?? null, expiresAt: applied.expiresAt ?? source.meetingExpiresAt ?? null, config: applied.config ?? source.meetingConfig ?? null }; }
+function mapAppointmentSnapshot(docSnap) { const data = docSnap.data() || {}; return { id: docSnap.id, ...data, status: normalizeAppointmentStatus(data.status), sessionStatus: normalizeSessionStatus(data.sessionStatus), startTime: coerceTimestamp(data.startTime, data.slotStartsAt), endTime: coerceTimestamp(data.endTime, data.slotEndsAt), meetingExpiresAt: coerceTimestamp(data.meetingExpiresAt), completedAt: coerceTimestamp(data.completedAt) }; }

@@ -15,12 +15,6 @@ function niceNameFromEmail(email) {
   return parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
 }
 
-const formatDate = (date) => {
-    if (!date) return 'Nenhuma';
-    const d = date instanceof Date ? date : date.toDate();
-    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
-};
-
 const TherapistDashboardPage = ({ user }) => {
   const navigate = useNavigate();
   const therapistUid = user?.uid;
@@ -30,14 +24,9 @@ const TherapistDashboardPage = ({ user }) => {
   const [searchTerm, setSearchTerm] = useState(''); 
   const [loading, setLoading] = useState(true);
   const [notification, setNotification] = useState({ message: '', type: '' });
-  const [activityCache, setActivityCache] = useState({}); 
-  // Estado para controlar qual card tem o nome "hovered"
   const [hoveredNameId, setHoveredNameId] = useState(null);
 
-  const fetchActivity = useCallback(async (patientId) => {
-    return { nextAppointment: null, lastConsultation: null };
-  }, []);
-
+  // Carrega pacientes vinculados a este terapeuta
   useEffect(() => {
     if (!therapistUid) { setLoading(false); return; }
     setLoading(true);
@@ -63,18 +52,6 @@ const TherapistDashboardPage = ({ user }) => {
   }, [therapistUid]);
 
   useEffect(() => {
-    if (patients.length > 0) {
-      patients.forEach(patient => {
-        if (!activityCache[patient.id]) {
-          fetchActivity(patient.id).then(activity => {
-            setActivityCache(prev => ({ ...prev, [patient.id]: activity }));
-          });
-        }
-      });
-    }
-  }, [patients, fetchActivity, activityCache]);
-
-  useEffect(() => {
     const lowerCaseSearch = searchTerm.toLowerCase();
     const filtered = patients.filter(patient => 
       (patient.displayName || '').toLowerCase().includes(lowerCaseSearch) ||
@@ -83,17 +60,6 @@ const TherapistDashboardPage = ({ user }) => {
     setFilteredPatients(filtered);
   }, [searchTerm, patients]);
   
-  const renderActivity = (patientId) => {
-    const activity = activityCache[patientId];
-    if (!activity) return <p style={{ margin: 0, fontSize: '0.8rem', color: '#6B7280' }}>Carregando atividade...</p>;
-    return (
-      <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#6B7280' }}>
-        <p style={{ margin: 0 }}>Próxima Sessão: {formatDate(activity.nextAppointment?.slotStartsAt)}</p>
-        <p style={{ margin: 0 }}>Última Consulta: {formatDate(activity.lastConsultation?.completedAt)}</p>
-      </div>
-    );
-  };
-
   const styles = {
     pageContainer: { padding: '2rem 3.5rem', backgroundColor: '#F9FAFB', fontFamily: '"Inter", sans-serif', minHeight: '100vh' },
     header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' },
@@ -102,33 +68,31 @@ const TherapistDashboardPage = ({ user }) => {
     searchBar: { flexGrow: 1, padding: '12px 15px', borderRadius: '12px', border: '1px solid #E5E7EB', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', fontSize: '1rem' },
     patientGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' },
     patientCard: { backgroundColor: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1)', transition: 'transform 0.1s, box-shadow 0.1s', display: 'flex', flexDirection: 'column' },
-    cardHeader: { display: 'flex', alignItems: 'center', marginBottom: '10px' },
-    patientAvatar: { width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#F3F4F6', display: 'flex', justifyContent: 'center', alignItems: 'center', marginRight: '15px' },
     
-    // Estilos dinâmicos para o nome
+    cardHeader: { display: 'flex', alignItems: 'center', marginBottom: '15px' },
+    
+    patientAvatar: { 
+        width: '50px', 
+        height: '50px', 
+        borderRadius: '50%', 
+        backgroundColor: '#F3F4F6', 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        marginRight: '15px',
+        overflow: 'hidden',
+        border: '1px solid #E5E7EB'
+    },
+    avatarImage: { width: '100%', height: '100%', objectFit: 'cover' },
+
     patientNameContainer: { position: 'relative', cursor: 'pointer' },
     patientName: { fontSize: '1.1rem', fontWeight: '600', margin: 0, color: '#1F2937', transition: 'color 0.2s' },
     patientNameHover: { color: '#8B5CF6', textDecoration: 'underline' },
-    tooltip: {
-        position: 'absolute',
-        top: '-30px',
-        left: '0',
-        backgroundColor: '#1F2937',
-        color: 'white',
-        padding: '4px 8px',
-        borderRadius: '4px',
-        fontSize: '0.75rem',
-        whiteSpace: 'nowrap',
-        pointerEvents: 'none',
-        opacity: 0,
-        transform: 'translateY(5px)',
-        transition: 'opacity 0.2s, transform 0.2s'
-    },
+    tooltip: { position: 'absolute', top: '-30px', left: '0', backgroundColor: '#1F2937', color: 'white', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', whiteSpace: 'nowrap', pointerEvents: 'none', opacity: 0, transform: 'translateY(5px)', transition: 'opacity 0.2s, transform 0.2s' },
     tooltipVisible: { opacity: 1, transform: 'translateY(0)' },
-
     patientDetails: { fontSize: '0.9rem', color: '#6B7280', margin: 0 },
     cardBody: { flexGrow: 1 },
-    cardActions: { display: 'flex', gap: '10px', marginTop: '15px', borderTop: '1px solid #F3F4F6', paddingTop: '15px' },
+    cardActions: { display: 'flex', gap: '10px', marginTop: 'auto', borderTop: '1px solid #F3F4F6', paddingTop: '15px' },
     actionButton: { flex: 1, padding: '10px 12px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'background-color 0.2s' },
     playlistButton: { backgroundColor: '#EDE9FE', color: '#6D28D9' },
   };
@@ -154,11 +118,15 @@ const TherapistDashboardPage = ({ user }) => {
                   <div key={patient.id} style={styles.patientCard}>
                     <div style={styles.cardBody}>
                       <div style={styles.cardHeader}>
+                        
                         <div style={styles.patientAvatar}>
-                          <UserIcon style={{ color: '#6D28D9' }} />
+                          {patient.photoURL ? (
+                              <img src={patient.photoURL} alt={patient.displayName} style={styles.avatarImage} />
+                          ) : (
+                              <UserIcon style={{ color: '#6D28D9', width: 24, height: 24 }} />
+                          )}
                         </div>
                         
-                        {/* Nome Interativo com "Ver Perfil" no Hover */}
                         <div 
                             style={styles.patientNameContainer}
                             onMouseEnter={() => setHoveredNameId(patient.id)}
@@ -175,11 +143,9 @@ const TherapistDashboardPage = ({ user }) => {
                         </div>
 
                       </div>
-                      {renderActivity(patient.id)}
                     </div>
 
                     <div style={styles.cardActions}>
-                        {/* Botão "Ver Perfil" removido. Ação agora é no nome. */}
                         <button 
                             style={{...styles.actionButton, ...styles.playlistButton}}
                             onClick={() => navigate(`/therapist/patient/${patient.id}/playlists`)}
