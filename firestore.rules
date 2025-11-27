@@ -2,7 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // --- Funções Auxiliares Globais ---
+    // --- Funções Auxiliares ---
     function isAuthenticated() {
       return request.auth != null;
     }
@@ -11,8 +11,6 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == therapistId;
     }
 
-    // --- Regras de Terapeutas e Slots ---
-    
     function isSlotRequester() {
       return isAuthenticated() && (
         request.auth.uid == resource.data.requestedBy ||
@@ -20,6 +18,7 @@ service cloud.firestore {
       );
     }
 
+    // --- Terapeutas e Slots ---
     match /therapists/{therapistId} {
       allow read: if isAuthenticated();
       allow write: if isTherapistOwner(therapistId);
@@ -27,16 +26,12 @@ service cloud.firestore {
 
     match /therapists/{therapistId}/slots/{slotId} {
       allow read: if isAuthenticated();
-      // Apenas o terapeuta cria slots para si mesmo
       allow create: if isTherapistOwner(therapistId)
         && request.resource.data.therapistId == therapistId;
-      
-      // Terapeuta pode atualizar, ou Paciente pode reservar (tornando-se requester)
       allow update: if (
           isTherapistOwner(therapistId) ||
           (isSlotRequester() && request.resource.data.therapistId == therapistId)
         );
-      
       allow delete: if isTherapistOwner(therapistId);
     }
 
@@ -44,8 +39,7 @@ service cloud.firestore {
       allow read: if isAuthenticated();
     }
 
-    // --- Regras de Agendamentos (Appointments) ---
-
+    // --- Agendamentos ---
     function isAppointmentParticipant() {
       return isAuthenticated() && (
         request.auth.uid == resource.data.patientId ||
@@ -71,7 +65,6 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == resource.data.patientId;
     }
 
-    // Validadores estritos para atualizações normais (não-cancelamento)
     function appointmentMeetingFieldsUnchanged() {
       return request.resource.data.meetingProvider == resource.data.meetingProvider
         && request.resource.data.meetingRoom == resource.data.meetingRoom
@@ -100,21 +93,16 @@ service cloud.firestore {
 
     match /appointments/{appointmentId} {
       allow read: if isAppointmentParticipant();
-      
       allow create: if isAppointmentParticipantFromRequest();
       
-      // CORREÇÃO PRINCIPAL AQUI:
       allow update: if isAppointmentParticipant() && (
-        // 1. Terapeuta pode editar tudo (dentro do razoável da lógica de negócio)
         isAppointmentTherapist() ||
         (
-          // 2. Paciente tentando editar...
           isAppointmentPatient() && 
           (
-            // 2a. ...SE for para CANCELAR, permite direto (ignora validação de meeting)
+            // Permite cancelar livremente
             request.resource.data.status == 'canceled' ||
-            
-            // 2b. ...SE for outra alteração, exige rigor
+            // Outros updates restritos
             (
               appointmentHistoryFieldsUnchanged() &&
               appointmentStatusUnchanged() &&
@@ -127,45 +115,26 @@ service cloud.firestore {
       allow delete: if isAppointmentParticipant();
     }
 
-    // --- Regras de Consultas (Consultations - Histórico) ---
-
+    // --- Consultas (Histórico) ---
     match /consultations/{consultationId} {
-      function isConsultationParticipant() {
-        return isAuthenticated() && (
-          request.auth.uid == resource.data.patientId ||
-          request.auth.uid == resource.data.therapistId
-        );
-      }
-      function isConsultationTherapist() {
-        return isAuthenticated() && request.auth.uid == resource.data.therapistId;
-      }
-      function isConsultationTherapistFromRequest() {
-        return isAuthenticated() && request.auth.uid == request.resource.data.therapistId;
-      }
-
-      allow read: if isConsultationParticipant();
-      allow create: if isConsultationTherapistFromRequest();
-      allow update: if isConsultationTherapist();
-      allow delete: if isConsultationTherapist();
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.patientId ||
+        request.auth.uid == resource.data.therapistId
+      );
+      allow create, update, delete: if isAuthenticated() && request.auth.uid == resource.data.therapistId;
     }
 
-    // --- Regras de Playlists ---
-
+    // --- Playlists ---
     match /playlists/{playlistId} {
-      // Leitura: Dono (Terapeuta) ou Paciente vinculado à playlist
       allow read: if isAuthenticated() && 
                    (resource.data.therapistUid == request.auth.uid || 
                     resource.data.patientUid == request.auth.uid);
 
-      // Criação: Apenas se o usuário for o terapeuta dono E houver um paciente definido
       allow create: if isAuthenticated()
-        && request.resource.data.therapistUid == request.auth.uid
-        && (request.resource.data.patientUid is string);
+        && request.resource.data.therapistUid == request.auth.uid;
 
-      // Atualizar/Deletar: Apenas o terapeuta dono
       allow update, delete: if isAuthenticated() && resource.data.therapistUid == request.auth.uid;
 
-      // Subcoleção de conteúdo (Músicas/Faixas)
       match /content/{contentId} {
         allow read: if isAuthenticated() &&
                      (get(/databases/$(database)/documents/playlists/$(playlistId)).data.therapistUid == request.auth.uid ||
@@ -176,15 +145,22 @@ service cloud.firestore {
       }
     }
 
-    // --- Regras de Usuários ---
-
+    // --- Usuários (CORREÇÃO AQUI) ---
     match /users/{userId} {
       allow read: if isAuthenticated();
-      // Permite que o próprio usuário edite seus dados (ex: foto, nome, vincular terapeuta)
-      allow write: if isAuthenticated() && request.auth.uid == userId;
+      
+      allow update: if isAuthenticated() && (
+        // O próprio usuário pode editar tudo
+        request.auth.uid == userId || 
+        
+        // O TERAPEUTA pode editar SE estiver se vinculando como terapeuta desse paciente
+        (resource.data.role == 'patient' && request.resource.data.therapistUid == request.auth.uid)
+      );
+
+      // Criação/Deleção restrita ao próprio usuário (ou admin, se houver)
+      allow create, delete: if isAuthenticated() && request.auth.uid == userId;
     }
 
-    // Bloqueio padrão para todo o resto
     match /{document=**} {
       allow read, write: if false;
     }

@@ -1,6 +1,6 @@
 // src/components/therapist/PatientDetailModal.js
 import React from 'react';
-import { UserIcon } from '../../common/Icons'; // Importe o ícone padrão caso não tenha foto
+import { UserIcon } from '../common/Icons'; // Importe o ícone padrão caso não tenha foto
 
 const PatientDetailModal = ({ patient, onClose, setNotification }) => {
 
