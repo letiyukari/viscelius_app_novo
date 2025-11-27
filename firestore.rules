@@ -1,73 +1,84 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    // --- Funções Auxiliares Globais ---
     function isAuthenticated() {
       return request.auth != null;
-}
+    }
 
     function isTherapistOwner(therapistId) {
       return isAuthenticated() && request.auth.uid == therapistId;
-}
+    }
 
+    // --- Regras de Terapeutas e Slots ---
+    
     function isSlotRequester() {
       return isAuthenticated() && (
         request.auth.uid == resource.data.requestedBy ||
         request.auth.uid == request.resource.data.requestedBy
       );
-}
+    }
 
     match /therapists/{therapistId} {
       allow read: if isAuthenticated();
       allow write: if isTherapistOwner(therapistId);
-}
+    }
 
     match /therapists/{therapistId}/slots/{slotId} {
       allow read: if isAuthenticated();
-allow create: if isTherapistOwner(therapistId)
+      // Apenas o terapeuta cria slots para si mesmo
+      allow create: if isTherapistOwner(therapistId)
         && request.resource.data.therapistId == therapistId;
-allow update: if (
+      
+      // Terapeuta pode atualizar, ou Paciente pode reservar (tornando-se requester)
+      allow update: if (
           isTherapistOwner(therapistId) ||
           (isSlotRequester() && request.resource.data.therapistId == therapistId)
         );
-allow delete: if isTherapistOwner(therapistId);
+      
+      allow delete: if isTherapistOwner(therapistId);
     }
 
     match /{path=**}/slots/{slotId} {
       allow read: if isAuthenticated();
-}
+    }
+
+    // --- Regras de Agendamentos (Appointments) ---
 
     function isAppointmentParticipant() {
       return isAuthenticated() && (
         request.auth.uid == resource.data.patientId ||
         request.auth.uid == resource.data.therapistId
       );
-}
+    }
 
     function isAppointmentParticipantFromRequest() {
       return isAuthenticated() && (
         request.auth.uid == request.resource.data.patientId ||
         request.auth.uid == request.resource.data.therapistId
       );
-}
+    }
 
     function isAppointmentTherapist() {
       return isAuthenticated() && (
         request.auth.uid == resource.data.therapistId ||
         (resource.data.therapistId == null && request.resource.data.therapistId == request.auth.uid)
       );
-}
+    }
 
     function isAppointmentPatient() {
       return isAuthenticated() && request.auth.uid == resource.data.patientId;
-}
+    }
 
+    // Validadores estritos para atualizações normais (não-cancelamento)
     function appointmentMeetingFieldsUnchanged() {
       return request.resource.data.meetingProvider == resource.data.meetingProvider
         && request.resource.data.meetingRoom == resource.data.meetingRoom
         && request.resource.data.meetingUrl == resource.data.meetingUrl
         && request.resource.data.meetingConfig == resource.data.meetingConfig
         && request.resource.data.meetingExpiresAt == resource.data.meetingExpiresAt;
-}
+    }
 
     function appointmentMeetingFieldsCleared() {
       return request.resource.data.meetingProvider == null
@@ -75,109 +86,107 @@ allow delete: if isTherapistOwner(therapistId);
         && request.resource.data.meetingUrl == null
         && request.resource.data.meetingConfig == null
         && request.resource.data.meetingExpiresAt == null;
-}
+    }
 
     function appointmentHistoryFieldsUnchanged() {
       return request.resource.data.historyId == resource.data.historyId
         && request.resource.data.completedAt == resource.data.completedAt;
-}
+    }
 
     function appointmentStatusUnchanged() {
       return request.resource.data.status == resource.data.status
         && request.resource.data.sessionStatus == resource.data.sessionStatus;
-}
-
-    function appointmentPatientCancelling() {
-      return request.resource.data.status == 'canceled'
-        && request.resource.data.sessionStatus == 'canceled';
-}
-
-    function isConsultationParticipant() {
-      return isAuthenticated() && (
-        request.auth.uid == resource.data.patientId ||
-        request.auth.uid == resource.data.therapistId
-      );
-}
-
-    function isConsultationTherapist() {
-      return isAuthenticated() && request.auth.uid == resource.data.therapistId;
-}
-
-    function isConsultationTherapistFromRequest() {
-      return isAuthenticated() && request.auth.uid == request.resource.data.therapistId;
-}
+    }
 
     match /appointments/{appointmentId} {
       allow read: if isAppointmentParticipant();
+      
       allow create: if isAppointmentParticipantFromRequest();
-allow update: if isAppointmentParticipant() && (
+      
+      // CORREÇÃO PRINCIPAL AQUI:
+      allow update: if isAppointmentParticipant() && (
+        // 1. Terapeuta pode editar tudo (dentro do razoável da lógica de negócio)
         isAppointmentTherapist() ||
         (
-          isAppointmentPatient() &&
-          appointmentHistoryFieldsUnchanged() &&
-          (appointmentStatusUnchanged() || appointmentPatientCancelling()) &&
-          (appointmentMeetingFieldsUnchanged() || appointmentMeetingFieldsCleared())
+          // 2. Paciente tentando editar...
+          isAppointmentPatient() && 
+          (
+            // 2a. ...SE for para CANCELAR, permite direto (ignora validação de meeting)
+            request.resource.data.status == 'canceled' ||
+            
+            // 2b. ...SE for outra alteração, exige rigor
+            (
+              appointmentHistoryFieldsUnchanged() &&
+              appointmentStatusUnchanged() &&
+              (appointmentMeetingFieldsUnchanged() || appointmentMeetingFieldsCleared())
+            )
+          )
         )
       );
-allow delete: if isAppointmentParticipant();
+      
+      allow delete: if isAppointmentParticipant();
     }
 
+    // --- Regras de Consultas (Consultations - Histórico) ---
+
     match /consultations/{consultationId} {
+      function isConsultationParticipant() {
+        return isAuthenticated() && (
+          request.auth.uid == resource.data.patientId ||
+          request.auth.uid == resource.data.therapistId
+        );
+      }
+      function isConsultationTherapist() {
+        return isAuthenticated() && request.auth.uid == resource.data.therapistId;
+      }
+      function isConsultationTherapistFromRequest() {
+        return isAuthenticated() && request.auth.uid == request.resource.data.therapistId;
+      }
+
       allow read: if isConsultationParticipant();
-allow create: if isConsultationTherapistFromRequest();
+      allow create: if isConsultationTherapistFromRequest();
       allow update: if isConsultationTherapist();
       allow delete: if isConsultationTherapist();
-}
+    }
 
-    // Regras para playlists
+    // --- Regras de Playlists ---
+
     match /playlists/{playlistId} {
-      function isTherapistUser() {
-        return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'therapist';
-}
-
-      // --- REGRA DE LEITURA ATUALIZADA ---
-      // Apenas o terapeuta dono OU o paciente vinculado podem ler.
+      // Leitura: Dono (Terapeuta) ou Paciente vinculado à playlist
       allow read: if isAuthenticated() && 
                    (resource.data.therapistUid == request.auth.uid || 
                     resource.data.patientUid == request.auth.uid);
 
-      function patientBelongsToTherapist(patientId) {
-        return patientId != null
-          && get(/databases/$(database)/documents/users/$(patientId)).data.role == 'patient'
-          && get(/databases/$(database)/documents/users/$(patientId)).data.therapistUid == request.auth.uid;
-}
-
-      // --- REGRA DE CRIAÇÃO ATUALIZADA ---
-      // Exige que o therapistUid seja o do usuário
-      // Exige que o patientUid seja um texto (string)
-allow create: if isAuthenticated()
+      // Criação: Apenas se o usuário for o terapeuta dono E houver um paciente definido
+      allow create: if isAuthenticated()
         && request.resource.data.therapistUid == request.auth.uid
-        && (request.resource.data.patientUid is string); // Agora é obrigatório
+        && (request.resource.data.patientUid is string);
 
-      // Atualizar / deletar: apenas o terapeuta dono
+      // Atualizar/Deletar: Apenas o terapeuta dono
       allow update, delete: if isAuthenticated() && resource.data.therapistUid == request.auth.uid;
 
-      // Regras para o conteúdo dentro das playlists
+      // Subcoleção de conteúdo (Músicas/Faixas)
       match /content/{contentId} {
-        // Apenas o terapeuta dono OU o paciente vinculado podem ler.
         allow read: if isAuthenticated() &&
                      (get(/databases/$(database)/documents/playlists/$(playlistId)).data.therapistUid == request.auth.uid ||
                       get(/databases/$(database)/documents/playlists/$(playlistId)).data.patientUid == request.auth.uid);
-
-        // Escrita: apenas o terapeuta dono da playlist
+        
         allow write: if isAuthenticated()
           && get(/databases/$(database)/documents/playlists/$(playlistId)).data.therapistUid == request.auth.uid;
-}
+      }
     }
+
+    // --- Regras de Usuários ---
 
     match /users/{userId} {
       allow read: if isAuthenticated();
-      // REGRA ORIGINAL: Apenas o próprio usuário pode escrever.
-allow write: if isAuthenticated() && request.auth.uid == userId;
+      // Permite que o próprio usuário edite seus dados (ex: foto, nome, vincular terapeuta)
+      allow write: if isAuthenticated() && request.auth.uid == userId;
     }
 
+    // Bloqueio padrão para todo o resto
     match /{document=**} {
       allow read, write: if false;
-}
+    }
   }
 }

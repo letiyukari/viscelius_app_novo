@@ -15,39 +15,30 @@ import {
   normalizeRole,
 } from '../../services/userService';
 
+// Configuração do Cloudinary (Mantenha suas chaves ou use variáveis de ambiente)
 const CLOUDINARY_CLOUD_NAME = 'dpncctfyy';
 const CLOUDINARY_UPLOAD_PRESET = 'viscelius_profiles';
 
+// Helper para iniciais
 function getInitials(nameOrEmail) {
   const source = (nameOrEmail || '').trim();
   if (!source) return '';
-  // Se for email e não tiver nome, usa parte antes do @
   const name = source.includes('@') ? source.split('@')[0] : source;
-  const parts = name
-    .replace(/[-_.]+/g, ' ')
-    .split(' ')
-    .filter(Boolean);
-  if (parts.length === 1) {
-    return parts[0].substring(0, 2).toUpperCase();
-  }
+  const parts = name.replace(/[-_.]+/g, ' ').split(' ').filter(Boolean);
+  if (parts.length === 0) return 'U';
+  if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-
+// Helpers para tratamento de Arrays de especialidades
 function parseSpecialtiesInput(value) {
   if (Array.isArray(value)) {
-    return value
-      .map((item) => (item == null ? '' : String(item).trim()))
-      .filter(Boolean);
+    return value.map((item) => (item == null ? '' : String(item).trim())).filter(Boolean);
   }
   if (typeof value === 'string') {
-    return value
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean);
+    return value.split(',').map((item) => item.trim()).filter(Boolean);
   }
-  if (value == null) return [];
-  return [String(value).trim()].filter(Boolean);
+  return [];
 }
 
 function stringifySpecialties(value) {
@@ -67,14 +58,11 @@ const ProfilePage = ({ user, onLogout }) => {
     professionalId: '',
     specialties: '',
   });
-  const [view, setView] = useState('main');
+  const [view, setView] = useState('main'); // 'main' | 'edit' | 'password'
 
-  const role = useMemo(
-    () => normalizeRole(userDoc?.role),
-    [userDoc?.role]
-  );
+  const role = useMemo(() => normalizeRole(userDoc?.role), [userDoc?.role]);
 
-  // Carrega/garante doc do usuário e role
+  // 1. Carregar dados do perfil
   useEffect(() => {
     let live = true;
     async function load() {
@@ -84,17 +72,20 @@ const ProfilePage = ({ user, onLogout }) => {
           uid: user.uid,
           email: user.email ?? null,
           displayName: user.displayName ?? null,
-          desiredRole: null,
+          desiredRole: null, // role já deve existir
         });
 
         if (!live) return;
+        
         const specialtyList = parseSpecialtiesInput(ensured.specialties);
         const specialtyText = specialtyList.join(', ');
+        
         const normalizedDoc = {
           ...ensured,
           specialties: specialtyList.length ? specialtyList : null,
           specialtyText,
         };
+
         setUserDoc(normalizedDoc);
         setForm({
           displayName: user.displayName ?? normalizedDoc.displayName ?? '',
@@ -114,7 +105,7 @@ const ProfilePage = ({ user, onLogout }) => {
     return () => { live = false; };
   }, [user]);
 
-  // Upload de avatar (Cloudinary) + sync Auth/Firestore
+  // 2. Upload de Avatar
   const handleAvatarSelected = async (file) => {
     if (!file || !user) return;
     setUploading(true);
@@ -127,10 +118,11 @@ const ProfilePage = ({ user, onLogout }) => {
         method: 'POST',
         body: fd,
       });
-      if (!resp.ok) throw new Error('Falha no upload para o Cloudinary');
+      if (!resp.ok) throw new Error('Falha no upload da imagem.');
       const data = await resp.json();
       const photoURL = data.secure_url;
 
+      // Atualiza Auth e Firestore
       await updateProfile(auth.currentUser, { photoURL });
       await updateDoc(doc(db, 'users', user.uid), {
         photoURL,
@@ -138,7 +130,7 @@ const ProfilePage = ({ user, onLogout }) => {
       });
 
       setUserDoc((prev) => ({ ...prev, photoURL }));
-      setNotif({ message: 'Foto atualizada!', type: 'success' });
+      setNotif({ message: 'Foto atualizada com sucesso!', type: 'success' });
     } catch (e) {
       console.error(e);
       setNotif({ message: 'Não foi possível atualizar a foto.', type: 'error' });
@@ -147,32 +139,33 @@ const ProfilePage = ({ user, onLogout }) => {
     }
   };
 
-  // Salvar edição
+  // 3. Salvar Edição do Perfil
   const handleEditSubmit = async (e) => {
     e.preventDefault();
     if (!user) return;
 
     try {
+      // Atualiza DisplayName no Auth (se mudou)
       if (form.displayName && form.displayName !== (auth.currentUser?.displayName || '')) {
         await updateProfile(auth.currentUser, { displayName: form.displayName });
       }
 
-      const specialtiesList =
-        role === 'therapist' ? parseSpecialtiesInput(form.specialties) : [];
-      const specialtiesPayload =
-        role === 'therapist'
-          ? (specialtiesList.length ? specialtiesList : null)
-          : undefined;
+      // Prepara dados específicos por Role
+      const specialtiesList = role === 'therapist' ? parseSpecialtiesInput(form.specialties) : [];
+      const specialtiesPayload = role === 'therapist' ? (specialtiesList.length ? specialtiesList : null) : undefined;
       const specialtiesText = specialtiesList.join(', ');
 
-      await updateProfileByRole(user.uid, role, {
+      const updatePayload = {
         displayName: form.displayName || null,
         phone: form.phone || null,
         birthDate: role === 'patient' ? (form.birthDate || null) : undefined,
         professionalId: role === 'therapist' ? (form.professionalId || null) : undefined,
         specialties: specialtiesPayload,
-      });
+      };
 
+      await updateProfileByRole(user.uid, role, updatePayload);
+
+      // Atualiza estado local
       setUserDoc((prev) => ({
         ...prev,
         displayName: form.displayName || prev.displayName || '',
@@ -183,55 +176,56 @@ const ProfilePage = ({ user, onLogout }) => {
         specialtyText: role === 'therapist' ? specialtiesText : prev.specialtyText,
       }));
 
+      // Atualiza form
       setForm((prev) => ({
         ...prev,
         specialties: role === 'therapist' ? specialtiesText : prev.specialties,
       }));
 
-      setNotif({ message: 'Informações salvas!', type: 'success' });
+      setNotif({ message: 'Perfil atualizado com sucesso!', type: 'success' });
       setView('main');
     } catch (e) {
       console.error(e);
-      setNotif({ message: 'Não foi possível salvar.', type: 'error' });
+      setNotif({ message: 'Erro ao salvar alterações.', type: 'error' });
     }
   };
 
+  // Dados para exibição
   const display = useMemo(() => {
-    // ➜ Sem pravatar! Se não há foto, deixamos null e usamos iniciais no componente.
-    const photo = userDoc?.photoURL || null;
-    const name = (user?.displayName ?? userDoc?.displayName) || 'Nome não informado';
-    const email = user?.email ?? userDoc?.email ?? '—';
-    const initials = getInitials(
-      (user?.displayName ?? userDoc?.displayName ?? user?.email ?? userDoc?.email ?? '')
-    );
+    const photo = userDoc?.photoURL || user?.photoURL || null;
+    const name = (user?.displayName ?? userDoc?.displayName) || 'Usuário';
+    const email = user?.email ?? userDoc?.email ?? '';
+    const initials = getInitials(name || email);
+    
     return {
       name,
       email,
       photo,
       initials,
-      phone: userDoc?.phone || '',
-      birthDate: userDoc?.birthDate || '',
-      professionalId: userDoc?.professionalId || '',
+      phone: userDoc?.phone || 'Não informado',
+      birthDate: userDoc?.birthDate || 'Não informada',
+      professionalId: userDoc?.professionalId || 'Não informado',
       specialties: stringifySpecialties(userDoc?.specialties ?? userDoc?.specialtyText ?? ''),
     };
   }, [user, userDoc]);
 
+  // Estilos inline simples para manter consistência
   const styles = {
     page: { padding: '2rem 3.5rem', backgroundColor: '#F9FAFB', fontFamily: '"Inter", sans-serif', minHeight: '100vh' },
-    header: { marginBottom: '2.5rem' },
-    title: { color: '#1F2937', fontSize: '2.2rem', fontWeight: 700, margin: 0 },
-    grid: { display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '2rem' },
-    card: { background: '#fff', border: '1px solid #E5E7EB', borderRadius: 16, padding: '2rem' },
+    header: { marginBottom: '2rem' },
+    title: { color: '#1F2937', fontSize: '2rem', fontWeight: 700, margin: 0 },
+    grid: { display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '2rem', alignItems: 'start' },
+    card: { background: '#fff', border: '1px solid #E5E7EB', borderRadius: 16, padding: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' },
     cardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #E5E7EB', paddingBottom: '1rem', marginBottom: '1.5rem' },
     cardTitle: { margin: 0, fontWeight: 600, color: '#1F2937', fontSize: '1.1rem' },
-    infoRow: { display: 'flex', justifyContent: 'space-between', padding: '.6rem 0' },
-    infoKey: { color: '#6B7280' },
+    infoRow: { display: 'flex', justifyContent: 'space-between', padding: '.75rem 0', borderBottom: '1px solid #F3F4F6' },
+    infoKey: { color: '#6B7280', fontSize: '0.95rem' },
     infoVal: { color: '#1F2937', fontWeight: 500 },
-    badge: { background: '#EDE9FE', color: '#6D28D9', padding: '6px 10px', borderRadius: 8, fontWeight: 600, fontSize: 12, display: 'inline-block', marginTop: 8 },
-    editBtn: { background: 'none', border: '1px solid #D1D5DB', color: '#374151', padding: '8px 16px', borderRadius: 8, cursor: 'pointer', fontWeight: 500 },
+    badge: { background: '#EDE9FE', color: '#6D28D9', padding: '4px 12px', borderRadius: 99, fontWeight: 600, fontSize: '0.8rem', marginTop: 10, display: 'inline-block' },
+    editBtn: { background: 'white', border: '1px solid #D1D5DB', color: '#374151', padding: '8px 16px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem', transition: 'all 0.2s' },
   };
 
-  if (loading) return <div style={styles.page}>Carregando...</div>;
+  if (loading) return <div style={{...styles.page, display: 'flex', justifyContent: 'center', alignItems: 'center'}}>Carregando perfil...</div>;
 
   return (
     <div style={styles.page}>
@@ -242,35 +236,41 @@ const ProfilePage = ({ user, onLogout }) => {
       />
 
       <header style={styles.header}>
-        <h1 style={styles.title}>
-          Conta e Perfil — {role === 'therapist' ? 'Profissional' : 'Paciente'}
-        </h1>
+        <h1 style={styles.title}>Meu Perfil</h1>
       </header>
 
       <div style={styles.grid}>
-        {/* Coluna esquerda: avatar + resumo */}
-        <div>
-          <div style={{ ...styles.card, textAlign: 'center' }}>
-            <AvatarUploader
-              src={display.photo}                // se null, mostra iniciais
-              initials={display.initials}        // ex: "GM"
-              uploading={uploading}
-              onFileSelected={handleAvatarSelected}
-              size={120}
-            />
-            <h2 style={{ marginTop: 12, marginBottom: 4, color: '#1F2937' }}>{display.name}</h2>
-            <p style={{ margin: 0, color: '#6B7280' }}>{display.email}</p>
-            <span style={styles.badge}>{role === 'therapist' ? 'Profissional' : 'Paciente'}</span>
-          </div>
+        {/* Cartão da Esquerda: Avatar e Info Básica */}
+        <div style={{ ...styles.card, textAlign: 'center' }}>
+          <AvatarUploader
+            src={display.photo}
+            initials={display.initials}
+            uploading={uploading}
+            onFileSelected={handleAvatarSelected}
+            size={120}
+          />
+          <h2 style={{ marginTop: 16, marginBottom: 4, color: '#1F2937', fontSize: '1.25rem' }}>{display.name}</h2>
+          <p style={{ margin: 0, color: '#6B7280', fontSize: '0.9rem' }}>{display.email}</p>
+          <span style={styles.badge}>
+            {role === 'therapist' ? 'Musicoterapeuta' : 'Paciente'}
+          </span>
         </div>
 
-        {/* Coluna direita: conteúdo dinâmico */}
+        {/* Cartão da Direita: Detalhes e Edição */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          {view === 'main' ? (
+          
+          {view === 'main' && (
             <div style={styles.card}>
               <div style={styles.cardHeader}>
-                <h3 style={styles.cardTitle}>Informações da Conta</h3>
-                <button style={styles.editBtn} onClick={() => setView('edit')}>Editar</button>
+                <h3 style={styles.cardTitle}>Dados Pessoais</h3>
+                <button 
+                  style={styles.editBtn} 
+                  onClick={() => setView('edit')}
+                  onMouseOver={(e) => e.target.style.backgroundColor = '#F9FAFB'}
+                  onMouseOut={(e) => e.target.style.backgroundColor = 'white'}
+                >
+                  Editar Dados
+                </button>
               </div>
 
               <div>
@@ -284,29 +284,31 @@ const ProfilePage = ({ user, onLogout }) => {
                 </div>
                 <div style={styles.infoRow}>
                   <span style={styles.infoKey}>Telefone</span>
-                  <span style={styles.infoVal}>{display.phone || '—'}</span>
+                  <span style={styles.infoVal}>{display.phone}</span>
                 </div>
 
                 {role === 'patient' ? (
                   <div style={styles.infoRow}>
                     <span style={styles.infoKey}>Data de Nascimento</span>
-                    <span style={styles.infoVal}>{display.birthDate || '—'}</span>
+                    <span style={styles.infoVal}>{display.birthDate}</span>
                   </div>
                 ) : (
                   <>
                     <div style={styles.infoRow}>
                       <span style={styles.infoKey}>Registro Profissional</span>
-                      <span style={styles.infoVal}>{display.professionalId || '—'}</span>
+                      <span style={styles.infoVal}>{display.professionalId}</span>
                     </div>
-                    <div style={styles.infoRow}>
+                    <div style={{...styles.infoRow, borderBottom: 'none'}}>
                       <span style={styles.infoKey}>Especialidades</span>
-                      <span style={styles.infoVal}>{display.specialties || '—'}</span>
+                      <span style={{...styles.infoVal, textAlign: 'right', maxWidth: '60%'}}>{display.specialties || '—'}</span>
                     </div>
                   </>
                 )}
               </div>
             </div>
-          ) : view === 'edit' ? (
+          )}
+
+          {view === 'edit' && (
             <div style={styles.card}>
               <div style={styles.cardHeader}>
                 <h3 style={styles.cardTitle}>Editar Informações</h3>
@@ -319,17 +321,9 @@ const ProfilePage = ({ user, onLogout }) => {
                 onSubmit={handleEditSubmit}
               />
             </div>
-          ) : (
-            <div style={styles.card}>
-              <div style={styles.cardHeader}>
-                <h3 style={styles.cardTitle}>Alterar Senha</h3>
-              </div>
-              <p style={{ color: '#6B7280', marginTop: 0 }}>
-                (Opcional) Implementar fluxo de redefinição via Firebase Auth (enviar link).
-              </p>
-            </div>
           )}
 
+          {/* Botões de Ação da Conta (Logout) */}
           <AccountActions onLogout={onLogout || (() => auth.signOut())} />
         </div>
       </div>
@@ -338,11 +332,3 @@ const ProfilePage = ({ user, onLogout }) => {
 };
 
 export default ProfilePage;
-
-
-
-
-
-
-
-
